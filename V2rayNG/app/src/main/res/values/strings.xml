@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name" translatable="false">v2rayNG</string>
+    <string name="app_name" translatable="false">Unknown Magic</string>
     <string name="app_widget_name">Switch</string>
     <string name="app_tile_name">Switch</string>
     <string name="app_tile_first_use">First use of this feature, please use the app to add server</string>
@@ -324,6 +324,7 @@
     <string name="title_update_config_count">Update %d configs</string>
     <string name="title_update_subscription_result">Updated %1$d configs (%2$d success, %3$d failed, %4$d skipped)</string>
     <string name="title_update_subscription_no_subscription">No subscriptions</string>
+    <string name="menu_all_ping">Ping All</string>
     <string name="toast_server_not_found_in_group">Selected server not found in current group</string>
     <string name="toast_fragment_not_available">Unable to locate current view</string>
     <string name="title_locate_selected_config">Locate the selected config</string>
@@ -404,6 +405,12 @@
     <string name="title_webdav_user">Username</string>
     <string name="title_webdav_pass">Password</string>
     <string name="title_webdav_remote_path">Remote directory (optional)</string>
+    <string name="recent_servers">Recent servers</string>
+
+    <string name="plugin_mode_standard">Standard</string>
+    <string name="plugin_mode_premium">Premium</string>
+    <string name="plugin_fetch_subscription">Fetching premium subscription...</string>
+    <string name="plugin_select_subscription">Select Subscription</string>
 
     <string-array name="share_method">
         <item>QRcode</item>
@@ -442,11 +449,11 @@
     </string-array>
 
     <string-array name="preset_rulesets">
+        <item>Russia Whitelist</item>
+        <item>Global</item>
         <item>China Whitelist</item>
         <item>China Blacklist</item>
-        <item>Global</item>
         <item>Iran Whitelist</item>
-        <item>Russia Whitelist</item>
     </string-array>
 
     <string-array name="vpn_bypass_lan">

@@ -1,6 +1,6 @@
-package com.v2ray.ang
+package me.unknkriod.ang
 
-import com.v2ray.ang.util.Utils
+import me.unknkriod.ang.util.Utils
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue

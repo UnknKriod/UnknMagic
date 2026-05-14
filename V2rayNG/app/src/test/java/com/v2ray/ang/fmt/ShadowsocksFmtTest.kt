@@ -1,9 +1,9 @@
-package com.v2ray.ang.fmt
+package me.unknkriod.ang.fmt
 
 import android.util.Base64
-import com.v2ray.ang.util.LogUtil
-import com.v2ray.ang.enums.EConfigType
-import com.v2ray.ang.dto.ProfileItem
+import me.unknkriod.ang.enums.EConfigType
+import me.unknkriod.ang.dto.ProfileItem
+import me.unknkriod.ang.fmt.ShadowsocksFmt
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse

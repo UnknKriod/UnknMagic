@@ -1,15 +1,16 @@
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
+    alias(libs.plugins.kotlin.compose)
     id("com.jaredsburrows.license")
 }
 
 android {
-    namespace = "com.v2ray.ang"
-    compileSdk = 36
+    namespace = "me.unknkriod.ang"
+    compileSdk = 37
 
     defaultConfig {
-        applicationId = "com.v2ray.ang"
+        applicationId = "me.unknkriod.ang"
         minSdk = 24
         targetSdk = 36
         versionCode = 727
@@ -126,13 +127,16 @@ android {
     buildFeatures {
         viewBinding = true
         buildConfig = true
+        compose = true
     }
 
     packaging {
         jniLibs {
             useLegacyPackaging = true
+            keepDebugSymbols.add("**/libhev-socks5-tunnel.so")
         }
     }
+    compileSdkMinor = 0
 
 }
 
@@ -161,6 +165,7 @@ dependencies {
     implementation(libs.mmkv.static)
     implementation(libs.gson)
     implementation(libs.okhttp)
+    implementation(libs.okhttp.logging)
 
     // Reactive and Utility Libraries
     implementation(libs.kotlinx.coroutines.android)
@@ -185,6 +190,33 @@ dependencies {
 
     // Multidex Support
     implementation(libs.multidex)
+
+    // Compose (Required for LicenseChecker)
+    implementation(platform(libs.androidx.compose.bom))
+    implementation(libs.androidx.compose.ui)
+    implementation(libs.androidx.compose.ui.graphics)
+    implementation(libs.androidx.compose.ui.tooling.preview)
+    implementation(libs.androidx.compose.material3)
+    implementation(libs.androidx.compose.material.icons.extended)
+    implementation(libs.androidx.activity.compose)
+    implementation(libs.lifecycle.runtime.compose)
+    implementation(libs.lifecycle.viewmodel.compose)
+    implementation(libs.androidx.security.crypto)
+    implementation(libs.androidx.datastore.preferences)
+    implementation(libs.threetenabp)
+
+    // Navigation & Adaptive (Required for LicenseChecker)
+    implementation(libs.androidx.navigation3.ui)
+    implementation(libs.androidx.navigation3.runtime)
+    implementation(libs.lifecycle.viewmodel.navigation3)
+    implementation(libs.androidx.compose.adaptive)
+    implementation(libs.androidx.compose.adaptive.layout)
+    implementation(libs.androidx.compose.adaptive.navigation3)
+
+    // Retrofit & Moshi (Required for LicenseChecker)
+    implementation(libs.retrofit)
+    implementation(libs.retrofit.converter.moshi)
+    implementation(libs.moshi.kotlin)
 
     // Testing Libraries
     testImplementation(libs.junit)

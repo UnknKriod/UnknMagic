@@ -5,11 +5,11 @@
     android:layout_height="match_parent"
     android:fitsSystemWindows="true"
     android:orientation="vertical"
-    tools:context=".ui.SettingsActivity">
+    tools:context="me.unknkriod.ang.ui.SettingsActivity">
 
     <androidx.fragment.app.FragmentContainerView
         android:id="@+id/fragment_settings"
-        android:name="com.v2ray.ang.ui.SettingsActivity$SettingsFragment"
+        android:name="me.unknkriod.ang.ui.SettingsActivity$SettingsFragment"
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 

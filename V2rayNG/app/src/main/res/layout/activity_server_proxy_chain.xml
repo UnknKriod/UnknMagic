@@ -4,7 +4,7 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:fitsSystemWindows="true"
-    tools:context=".ui.ServerProxyChainActivity">
+    tools:context="me.unknkriod.ang.ui.ServerProxyChainActivity">
 
     <androidx.core.widget.NestedScrollView
         android:id="@+id/main_content"

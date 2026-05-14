@@ -6,7 +6,7 @@
     android:layout_height="match_parent"
     android:fitsSystemWindows="true"
     android:orientation="vertical"
-    tools:context=".ui.PerAppProxyActivity">
+    tools:context="me.unknkriod.ang.ui.PerAppProxyActivity">
 
     <LinearLayout
         android:id="@+id/header_view"
