@@ -244,6 +244,7 @@ object NotificationManager {
             .setOngoing(true)
             .setShowWhen(false)
             .setOnlyAlertOnce(true)
+            .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .setContentIntent(contentPendingIntent)
             .addAction(
                 R.drawable.ic_delete_24dp,

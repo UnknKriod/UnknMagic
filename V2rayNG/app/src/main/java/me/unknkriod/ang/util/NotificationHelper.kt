@@ -6,30 +6,32 @@ import android.app.NotificationManager
 import android.app.Service
 import android.content.Context
 import android.os.Build
+import android.os.SystemClock
 import androidx.core.app.NotificationCompat
 import me.unknkriod.ang.R
 import me.unknkriod.ang.enums.NotificationChannelType
+import java.util.concurrent.ConcurrentHashMap
 
 /**
- * Unified notification helper for different notification channels.
- * Supports both regular notifications and foreground service notifications.
+ * Radically optimized unified notification helper.
  *
- * Performance: NotificationManager is cached. Builder is created once per update.
- * Safe for high-frequency updates (100+ times/second).
+ * OPTIMIZATIONS:
+ * 1. Rate Limiting: Minimum 3 seconds between notify() calls for the same ID.
+ * 2. State Caching: Skips notify() if content hasn't changed.
+ * 3. Builder Caching: Reuses NotificationCompat.Builder to minimize allocations.
+ * 4. Manager Caching: Single NotificationManager instance.
  */
 object NotificationHelper {
 
-    // Cached instances for performance
+    private const val MIN_UPDATE_INTERVAL_MS = 3000L
+
     private var cachedNotificationManager: NotificationManager? = null
-    private val builderCache = mutableMapOf<Int, NotificationCompat.Builder>()
+    private val builderCache = ConcurrentHashMap<Int, NotificationCompat.Builder>()
+    private val lastContentCache = ConcurrentHashMap<Int, String>()
+    private val lastUpdateTimeCache = ConcurrentHashMap<Int, Long>()
 
     /**
-     * Notify with a regular notification (non-foreground).
-     *
-     * @param channelType The notification channel type (defines channelId, notificationId, etc.)
-     * @param context The context for building the notification
-     * @param title The notification title
-     * @param content The notification content text
+     * Notify with rate limiting and change detection.
      */
     fun notify(
         channelType: NotificationChannelType,
@@ -37,45 +39,65 @@ object NotificationHelper {
         title: String,
         content: String
     ) {
+        val notificationId = channelType.notificationId
+
+        // Change detection
+        if (lastContentCache[notificationId] == content) return
+
+        // Rate limiting
+        val now = SystemClock.elapsedRealtime()
+        val lastUpdate = lastUpdateTimeCache[notificationId] ?: 0L
+        if (now - lastUpdate < MIN_UPDATE_INTERVAL_MS) return
+
         ensureChannelCreated(channelType, context)
         val notificationManager = getNotificationManager(context)
-        val builder = buildNotificationBuilder(channelType, context, title, content)
-        notificationManager.notify(channelType.notificationId, builder.build())
+
+        val builder = builderCache.getOrPut(notificationId) {
+            buildNotificationBuilder(channelType, context, title, content)
+        }
+        builder.setContentTitle(title)
+        builder.setContentText(content)
+
+        notificationManager.notify(notificationId, builder.build())
+
+        lastContentCache[notificationId] = content
+        lastUpdateTimeCache[notificationId] = now
     }
 
     /**
-     * Update an existing notification's content.
-     * Optimized for high-frequency updates (100+/sec).
-     * Reuses cached Builder to minimize allocation overhead.
-     *
-     * @param channelType The notification channel type
-     * @param context The context
-     * @param content The new content text
+     * Optimized for high-frequency updates with throttling.
      */
     fun updateNotification(
         channelType: NotificationChannelType,
         context: Context,
         content: String
     ) {
+        val notificationId = channelType.notificationId
+
+        // 1. Content check (cheapest)
+        if (lastContentCache[notificationId] == content) return
+
+        // 2. Time check (throttling)
+        val now = SystemClock.elapsedRealtime()
+        val lastUpdate = lastUpdateTimeCache[notificationId] ?: 0L
+        if (now - lastUpdate < MIN_UPDATE_INTERVAL_MS) return
+
         val notificationManager = getNotificationManager(context)
 
-        // Get or create builder from cache
-        val builder = builderCache.getOrPut(channelType.notificationId) {
+        val builder = builderCache.getOrPut(notificationId) {
             buildNotificationBuilder(channelType, context, "", content)
         }
 
-        // Update only the content text (fast operation)
         builder.setContentText(content)
-        notificationManager.notify(channelType.notificationId, builder.build())
+        notificationManager.notify(notificationId, builder.build())
+
+        lastContentCache[notificationId] = content
+        lastUpdateTimeCache[notificationId] = now
     }
 
     /**
      * Start a foreground service with a notification.
-     *
-     * @param service The service to set as foreground
-     * @param channelType The notification channel type
-     * @param title The notification title
-     * @param content The notification content text
+     * Always bypasses rate limiting for the initial start.
      */
     fun startForeground(
         service: Service,
@@ -83,47 +105,47 @@ object NotificationHelper {
         title: String,
         content: String
     ) {
+        val notificationId = channelType.notificationId
         ensureChannelCreated(channelType, service)
+
         val builder = buildNotificationBuilder(channelType, service, title, content)
-        service.startForeground(channelType.notificationId, builder.build())
+        builderCache[notificationId] = builder
+
+        service.startForeground(notificationId, builder.build())
+
+        lastContentCache[notificationId] = content
+        lastUpdateTimeCache[notificationId] = SystemClock.elapsedRealtime()
     }
 
-    /**
-     * Stop the foreground notification for a service.
-     *
-     * @param service The service to stop foreground on
-     */
     fun stopForeground(service: Service) {
         service.stopForeground(Service.STOP_FOREGROUND_REMOVE)
     }
 
-    /**
-     * Cancel a notification and clean up cached builder.
-     *
-     * @param channelType The notification channel type
-     * @param context The context
-     */
     fun cancel(
         channelType: NotificationChannelType,
         context: Context
     ) {
-        getNotificationManager(context).cancel(channelType.notificationId)
-        builderCache.remove(channelType.notificationId)  // Clean up cache
+        val id = channelType.notificationId
+        getNotificationManager(context).cancel(id)
+        builderCache.remove(id)
+        lastContentCache.remove(id)
+        lastUpdateTimeCache.remove(id)
     }
 
     // ====== Private helper methods ======
 
     private fun getNotificationManager(context: Context): NotificationManager {
-        if (cachedNotificationManager == null) {
-            cachedNotificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        return cachedNotificationManager ?: synchronized(this) {
+            cachedNotificationManager ?: (context.applicationContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).also {
+                cachedNotificationManager = it
+            }
         }
-        return cachedNotificationManager!!
     }
 
     private fun ensureChannelCreated(channelType: NotificationChannelType, context: Context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
 
-        val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        val notificationManager = getNotificationManager(context)
         if (notificationManager.getNotificationChannel(channelType.channelId) != null) return
 
         val channel = NotificationChannel(
@@ -132,6 +154,7 @@ object NotificationHelper {
             NotificationManager.IMPORTANCE_LOW
         ).apply {
             lockscreenVisibility = Notification.VISIBILITY_PRIVATE
+            setShowBadge(false)
         }
         notificationManager.createNotificationChannel(channel)
     }
@@ -159,4 +182,3 @@ object NotificationHelper {
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
     }
 }
-
