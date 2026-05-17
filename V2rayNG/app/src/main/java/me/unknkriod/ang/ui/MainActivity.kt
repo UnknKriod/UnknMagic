@@ -30,9 +30,12 @@ import me.unknkriod.ang.viewmodel.MainViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
 import me.unknkriod.ang.dto.SubscriptionItem
 import me.unknkriod.ang.dto.ProfileItem
+import me.unknkriod.licensechecker.manager.LicenseManager
+import me.unknkriod.licensechecker.extension.subscription.SubscriptionManager
+import me.unknkriod.licensechecker.data.SubscriptionResponse
 import kotlin.coroutines.resumeWithException
 
 class MainActivity : BaseActivity() {
@@ -40,22 +43,27 @@ class MainActivity : BaseActivity() {
     private val mainViewModel: MainViewModel by viewModels()
     private val topServersAdapter by lazy { ServersAdapter(false) }
     private var selectionFromRecent: Boolean = false
-    private var remoteSubscriptions: List<*> = emptyList<Any>()
+    private var remoteSubscriptions: List<SubscriptionResponse> = emptyList()
     private val expandedSubscriptions = mutableSetOf<String>()
     private var isFetchingRemote = false
 
     private val isExtensionAvailable by lazy {
         try {
-            Class.forName("me.unknkriod.licensechecker.extension.subscription.SubscriptionManager")
-            Class.forName("me.unknkriod.licensechecker.manager.LicenseManager")
+            LicenseManager::class.java
+            SubscriptionManager::class.java
             true
-        } catch (e: Exception) {
+        } catch (_: NoClassDefFoundError) {
+            false
+        } catch (_: Exception) {
             false
         }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        val licenseManager = if (isExtensionAvailable) LicenseManager.getInstance(this@MainActivity) else null
+
         setContentViewWithToolbar(binding.root, showHomeAsUp = false, title = getString(R.string.app_name))
 
         binding.fab.setOnClickListener { handleFabAction() }
@@ -91,31 +99,33 @@ class MainActivity : BaseActivity() {
         }
         refreshModeUI()
         
-        checkLicenseAuth()
+        checkLicenseAuth(licenseManager)
     }
 
-    private fun checkLicenseAuth() {
+    private fun checkLicenseAuth(manager: LicenseManager?) {
         if (!isExtensionAvailable) return
         
-        lifecycleScope.launch {
+        lifecycleScope.launch(Dispatchers.Default) {
             try {
-                val managerClazz = Class.forName("me.unknkriod.licensechecker.manager.LicenseManager")
-                val manager = managerClazz.getConstructor(android.content.Context::class.java).newInstance(this@MainActivity)
-                val isValidMethod = managerClazz.getDeclaredMethod("isLicenseValidLocally")
-                val isValid = isValidMethod.invoke(manager) as Boolean
+                val isValid = manager?.isLicenseValidLocally()
 
-                if (!isValid) {
-                    val loginIntent = Intent(this@MainActivity, Class.forName("me.unknkriod.licensechecker.MainActivity"))
-                    loginIntent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-                    startActivity(loginIntent)
-                } else {
-                    if (MmkvManager.decodeSettingsBool(PREF_IS_PREMIUM_MODE, false) && getPremiumSubIds().isEmpty()) {
-                        fetchRemoteSubscriptions()
+                withContext(Dispatchers.Main) {
+                    if (!isValid!!) {
+                        try {
+                            val loginIntent = Intent(this@MainActivity, me.unknkriod.licensechecker.MainActivity::class.java)
+                            loginIntent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                            startActivity(loginIntent)
+                        } catch (e: Exception) {
+                            Log.e("v2rayNG", "Failed to start license activity", e)
+                        }
+                    } else {
+                        if (MmkvManager.decodeSettingsBool(PREF_IS_PREMIUM_MODE, false) && getPremiumSubIds().isEmpty()) {
+                            fetchRemoteSubscriptions()
+                        }
                     }
                 }
             } catch (e: Exception) {
                 Log.e("v2rayNG", "Exception in checkLicenseAuth", e)
-                e.printStackTrace()
             }
         }
     }
@@ -124,6 +134,7 @@ class MainActivity : BaseActivity() {
         if (!isExtensionAvailable) return
 
         binding.tabMode.visibility = View.VISIBLE
+        findViewById<View>(R.id.license_handle)?.visibility = View.VISIBLE
         
         // Add a small gap between tabs
         val tabContainer = binding.tabMode.getChildAt(0) as? ViewGroup
@@ -144,13 +155,14 @@ class MainActivity : BaseActivity() {
             }
 
             override fun onTabUnselected(tab: TabLayout.Tab?) {}
-            override fun onTabReselected(tab: TabLayout.Tab?) {
-            }
+            override fun onTabReselected(tab: TabLayout.Tab?) {}
         })
     }
 
     private fun refreshModeUI() {
         val isPremium = isExtensionAvailable && MmkvManager.decodeSettingsBool(PREF_IS_PREMIUM_MODE, false)
+
+        binding.layoutRecentServers.removeAllViews()
 
         val standardVisibility = if (isPremium) View.GONE else View.VISIBLE
         binding.tvRecentLabel.visibility = standardVisibility
@@ -161,23 +173,18 @@ class MainActivity : BaseActivity() {
             binding.cardRecent.visibility = View.VISIBLE
             binding.layoutEmptyTop.visibility = View.GONE
 
-            // If current sub is not premium, clear it
-            val premiumIds = getPremiumSubIds()
-            if (mainViewModel.subscriptionId.isNotEmpty() && !premiumIds.contains(mainViewModel.subscriptionId)) {
-                mainViewModel.subscriptionIdChanged("")
+            if (mainViewModel.subscriptionId.isNotEmpty()) {
+                val premiumIds = getPremiumSubIds()
+                if (!premiumIds.contains(mainViewModel.subscriptionId)) {
+                    mainViewModel.subscriptionIdChanged("")
+                }
             }
 
             if (getPremiumSubIds().isEmpty()) {
                 fetchRemoteSubscriptions()
             }
         } else {
-            val recentServers = MmkvManager.decodeRecentServers()
-            val premiumIds = getPremiumSubIds()
-            val filteredRecent = recentServers.filter { guid ->
-                val profile = MmkvManager.decodeServerConfig(guid)
-                profile != null && !premiumIds.contains(profile.subscriptionId)
-            }
-            binding.cardRecent.visibility = if (filteredRecent.isEmpty()) View.GONE else View.VISIBLE
+            binding.cardRecent.visibility = View.VISIBLE // Will be hidden in refreshSelectedServer if empty
             binding.tvRecentLabel.text = getString(R.string.recent_servers)
             mainViewModel.subscriptionIdChanged("")
         }
@@ -187,100 +194,67 @@ class MainActivity : BaseActivity() {
     private fun fetchRemoteSubscriptions() {
         if (isFetchingRemote) return
         isFetchingRemote = true
-        lifecycleScope.launch {
+        lifecycleScope.launch(Dispatchers.Default) {
             try {
-                val clazz = Class.forName("me.unknkriod.licensechecker.extension.subscription.SubscriptionManager")
-                val manager = clazz.getConstructor(android.content.Context::class.java).newInstance(this@MainActivity)
-                val method = clazz.methods.find { it.name.startsWith("getRemoteSubscriptions") }
-                    ?: throw NoSuchMethodException("getRemoteSubscriptions")
+                val manager = SubscriptionManager(this@MainActivity)
+                val result = manager.getRemoteSubscriptions()
                 
-                val resultObject = if (method.parameterTypes.lastOrNull()?.name?.contains("kotlin.coroutines.Continuation") == true) {
-                    suspendCancellableCoroutine { cont ->
-                        try {
-                            method.invoke(manager, cont)
-                        } catch (e: Exception) {
-                            cont.resumeWithException(e)
-                        }
+                withContext(Dispatchers.Main) {
+                    result.onSuccess { subs ->
+                        remoteSubscriptions = subs
+                        syncAndAutoImport(subs)
+                        refreshSelectedServer()
+                    }.onFailure {
+                        Log.e("v2rayNG", "Failed to fetch subscriptions", it)
+                        toast(it.message ?: "Error fetching subscriptions")
                     }
-                } else {
-                    method.invoke(manager)
-                }
-
-                val result = resultObject as? Result<List<*>> ?: throw IllegalStateException("Unexpected result type: ${resultObject?.javaClass}")
-                
-                result.onSuccess { subs ->
-                    remoteSubscriptions = subs
-                    syncAndAutoImport(subs)
-                    refreshSelectedServer()
-                }.onFailure {
-                    Log.e("v2rayNG", "Failed to fetch subscriptions", it)
-                    toast(it.message ?: "Error fetching subscriptions")
                 }
             } catch (e: Exception) {
                 Log.e("v2rayNG", "Exception in fetchRemoteSubscriptions", e)
-                e.printStackTrace()
             } finally {
                 isFetchingRemote = false
             }
         }
     }
 
-    private fun syncAndAutoImport(subs: List<*>) {
-        var anyUpdate = false
-        val currentSubs = MmkvManager.decodeSubscriptions()
-        val premiumIds = getPremiumSubIds().toMutableSet()
-        var premiumIdsChanged = false
-        
-        subs.forEach { remote ->
-            val remarks = getProperty(remote, "remarks")
-            val url = getProperty(remote, "url")
-            
-            if (url.isNotEmpty()) {
-                val existing = currentSubs.find { it.subscription.url == url }
-                if (existing == null) {
-                    importRemoteSubscription(remarks, url, silent = true)
-                    anyUpdate = true
-                    // Refresh our local set after import
-                    premiumIds.addAll(getPremiumSubIds())
-                } else {
-                    if (!premiumIds.contains(existing.guid)) {
-                        premiumIds.add(existing.guid)
-                        premiumIdsChanged = true
-                    }
-                    if (MmkvManager.decodeServerList(existing.guid).isEmpty()) {
+    private fun syncAndAutoImport(subs: List<SubscriptionResponse>) {
+        lifecycleScope.launch(Dispatchers.Default) {
+            var anyUpdate = false
+            val currentSubs = MmkvManager.decodeSubscriptions()
+            val premiumIds = getPremiumSubIds().toMutableSet()
+            var premiumIdsChanged = false
+
+            subs.forEach { remote ->
+                val remarks = remote.remarks
+                val url = remote.url
+                
+                if (url.isNotEmpty()) {
+                    val existing = currentSubs.find { it.subscription.url == url }
+                    if (existing == null) {
+                        importRemoteSubscription(remarks, url, silent = true)
                         anyUpdate = true
+                        premiumIds.addAll(getPremiumSubIds())
+                    } else {
+                        if (!premiumIds.contains(existing.guid)) {
+                            premiumIds.add(existing.guid)
+                            premiumIdsChanged = true
+                        }
+                        if (MmkvManager.decodeServerList(existing.guid).isEmpty()) {
+                            anyUpdate = true
+                        }
                     }
                 }
             }
-        }
 
-        if (premiumIdsChanged) {
-            MmkvManager.encodeSettings(PREF_PREMIUM_SUBS_LIST, premiumIds.joinToString(","))
-        }
+            if (premiumIdsChanged) {
+                MmkvManager.encodeSettings(PREF_PREMIUM_SUBS_LIST, premiumIds.joinToString(","))
+            }
 
-        if (anyUpdate) {
-            importConfigViaSub(triggerPing = false)
-        }
-    }
-
-    private fun getProperty(obj: Any?, name: String): String {
-        if (obj == null) return ""
-        try {
-            val getterName = "get${name.replaceFirstChar { it.uppercase() }}"
-            return try {
-                obj.javaClass.getDeclaredMethod(getterName).invoke(obj) as? String ?: ""
-            } catch (e: Exception) {
-                try {
-                    obj.javaClass.getDeclaredField(name).apply { isAccessible = true }.get(obj) as? String ?: ""
-                } catch (e2: Exception) {
-                    // Try to get from a map if it's a map
-                    if (obj is Map<*, *>) {
-                        obj[name] as? String ?: ""
-                    } else ""
+            if (anyUpdate) {
+                withContext(Dispatchers.Main) {
+                    importConfigViaSub(triggerPing = false)
                 }
             }
-        } catch (e: Exception) {
-            return ""
         }
     }
 
@@ -305,13 +279,23 @@ class MainActivity : BaseActivity() {
         }
     }
 
+    private var lastUpdateActionTime = 0L
+
     private fun setupViewModel() {
         mainViewModel.isRunning.observe(this) { isRunning ->
             applyRunningState(isRunning = isRunning)
         }
         mainViewModel.updateTestResultAction.observe(this) {
-            setTestState(it)
-            refreshSelectedServer()
+            if (it == null) {
+                applyRunningState(mainViewModel.isRunning.value == true)
+            } else {
+                setTestState(it)
+            }
+            val now = System.currentTimeMillis()
+            if (now - lastUpdateActionTime > 1000) {
+                lastUpdateActionTime = now
+                refreshSelectedServer()
+            }
         }
         mainViewModel.updateListAction.observe(this) {
             refreshSelectedServer()
@@ -408,115 +392,125 @@ class MainActivity : BaseActivity() {
 
     private fun refreshSelectedServer() {
         val isPremium = isExtensionAvailable && MmkvManager.decodeSettingsBool(PREF_IS_PREMIUM_MODE, false)
-        val currentGuid = MmkvManager.getSelectServer()
-        val premiumIds = getPremiumSubIds()
-
-        binding.layoutRecentServers.removeAllViews()
-
-        if (isPremium) {
-            val allServers = MmkvManager.decodeAllServerList().mapNotNull { guid ->
-                val profile = MmkvManager.decodeServerConfig(guid)
-                if (profile != null) ServersCache(guid, profile) else null
-            }
-
-            val currentSubs = MmkvManager.decodeSubscriptions()
+        
+        lifecycleScope.launch(Dispatchers.Default) {
+            val currentGuid = MmkvManager.getSelectServer()
             val premiumIds = getPremiumSubIds()
-
-            // Use remoteSubscriptions if available (just fetched), otherwise use imported premium subscriptions
-            val displayList = if (remoteSubscriptions.isNotEmpty()) {
-                remoteSubscriptions.map { remote ->
-                    val url = getProperty(remote, "url")
-                    val remarks = getProperty(remote, "remarks")
-                    val importedSub = currentSubs.find { it.subscription.url == url }
-                    Triple(remarks, url, importedSub?.guid ?: "")
+            
+            if (isPremium) {
+                val allServers = MmkvManager.decodeAllServerList().mapNotNull { guid ->
+                    val profile = MmkvManager.decodeServerConfig(guid)
+                    if (profile != null) ServersCache(guid, profile) else null
                 }
-            } else {
-                currentSubs.filter { premiumIds.contains(it.guid) }.map {
-                    Triple(it.subscription.remarks, it.subscription.url, it.guid)
-                }
-            }
-
-            displayList.forEach { (remarks, url, subId) ->
-                val subBlock = layoutInflater.inflate(R.layout.item_premium_subscription, binding.layoutRecentServers, false)
-                val tvSubName = subBlock.findViewById<TextView>(R.id.tv_sub_name)
-                val ivExpand = subBlock.findViewById<ImageView>(R.id.iv_expand)
-                val rvServers = subBlock.findViewById<RecyclerView>(R.id.rv_servers)
-                val viewSelect = subBlock.findViewById<View>(R.id.view_select_area)
-                val viewExpand = subBlock.findViewById<View>(R.id.view_expand_area)
-                val ivIndicator = subBlock.findViewById<ImageView>(R.id.iv_selected_indicator)
-
-                tvSubName.text = remarks
-
-                val isSelected = mainViewModel.subscriptionId == subId
-                subBlock.alpha = if (mainViewModel.subscriptionId.isEmpty() || isSelected) 1.0f else 0.5f
-                ivIndicator.visibility = if (isSelected && subId.isNotEmpty()) View.VISIBLE else View.GONE
-
-                val isExpanded = expandedSubscriptions.contains(url)
-                rvServers.visibility = if (isExpanded) View.VISIBLE else View.GONE
-                ivExpand.rotation = if (isExpanded) 180f else 0f
-
-                viewSelect.setOnClickListener {
-                    if (subId.isEmpty()) return@setOnClickListener
-                    if (mainViewModel.subscriptionId == subId) {
-                        mainViewModel.subscriptionIdChanged("")
-                    } else {
-                        mainViewModel.subscriptionIdChanged(subId)
-                        expandedSubscriptions.add(url)
+                val currentSubs = MmkvManager.decodeSubscriptions()
+                
+                val displayList = if (remoteSubscriptions.isNotEmpty()) {
+                    remoteSubscriptions.map { remote ->
+                        val url = remote.url
+                        val remarks = remote.remarks
+                        val importedSub = currentSubs.find { it.subscription.url == url }
+                        Triple(remarks, url, importedSub?.guid ?: "")
                     }
-                }
-
-                viewExpand.setOnClickListener {
-                    if (expandedSubscriptions.contains(url)) {
-                        expandedSubscriptions.remove(url)
-                    } else {
-                        expandedSubscriptions.add(url)
-                    }
-                    refreshSelectedServer()
-                }
-
-                if (subId.isNotEmpty()) {
-                    val serversInSub = allServers.filter { it.profile.subscriptionId == subId }
-                    if (serversInSub.isNotEmpty()) {
-                        val adapter = ServersAdapter(fromRecent = false)
-                        rvServers.adapter = adapter
-                        adapter.submitList(serversInSub)
-                    }
-                }
-                binding.layoutRecentServers.addView(subBlock)
-            }
-            binding.cardRecent.alpha = 1.0f
-        } else {
-            val recentGuids = MmkvManager.decodeRecentServers()
-            val filteredRecent = recentGuids.filter { guid ->
-                val profile = MmkvManager.decodeServerConfig(guid)
-                profile != null && !premiumIds.contains(profile.subscriptionId)
-            }
-
-            if (filteredRecent.isEmpty()) {
-                binding.cardRecent.visibility = View.GONE
-                binding.tvRecentLabel.visibility = View.GONE
-            } else {
-                binding.cardRecent.visibility = View.VISIBLE
-                binding.tvRecentLabel.visibility = View.VISIBLE
-                filteredRecent.forEach { guid ->
-                    val profile = MmkvManager.decodeServerConfig(guid) ?: return@forEach
-                    addServerToLayout(guid, profile, currentGuid, fromRecent = true)
-                }
-            }
-
-            if (currentGuid != null) {
-                if (selectionFromRecent) {
-                    binding.cardRecent.alpha = 1.0f
-                    binding.rvTopServers.alpha = 0.5f
                 } else {
-                    binding.cardRecent.alpha = 0.5f
-                    binding.rvTopServers.alpha = 1.0f
+                    currentSubs.filter { premiumIds.contains(it.guid) }.map {
+                        Triple(it.subscription.remarks, it.subscription.url, it.guid)
+                    }
+                }
+
+                withContext(Dispatchers.Main) {
+                    updatePremiumLayout(displayList, allServers)
                 }
             } else {
+                val recentGuids = MmkvManager.decodeRecentServers()
+                val filteredRecent = recentGuids.filter { guid ->
+                    val profile = MmkvManager.decodeServerConfig(guid)
+                    profile != null && !premiumIds.contains(profile.subscriptionId)
+                }.mapNotNull { guid ->
+                    val profile = MmkvManager.decodeServerConfig(guid)
+                    if (profile != null) guid to profile else null
+                }
+
+                withContext(Dispatchers.Main) {
+                    updateStandardLayout(filteredRecent, currentGuid)
+                }
+            }
+            
+            withContext(Dispatchers.Main) {
+                updateTop10List()
+            }
+        }
+    }
+
+    private fun updatePremiumLayout(displayList: List<Triple<String, String, String>>, allServers: List<ServersCache>) {
+        // Still using removeAllViews but now only when needed and fewer times.
+        // Ideally this should be a RecyclerView with DiffUtil.
+        binding.layoutRecentServers.removeAllViews()
+        displayList.forEach { (remarks, url, subId) ->
+            val subBlock = layoutInflater.inflate(R.layout.item_premium_subscription, binding.layoutRecentServers, false)
+            val tvSubName = subBlock.findViewById<TextView>(R.id.tv_sub_name)
+            val ivExpand = subBlock.findViewById<ImageView>(R.id.iv_expand)
+            val rvServers = subBlock.findViewById<RecyclerView>(R.id.rv_servers)
+            val viewSelect = subBlock.findViewById<View>(R.id.view_select_area)
+            val viewExpand = subBlock.findViewById<View>(R.id.view_expand_area)
+            val ivIndicator = subBlock.findViewById<ImageView>(R.id.iv_selected_indicator)
+
+            tvSubName.text = remarks
+            val isSelected = mainViewModel.subscriptionId == subId
+            subBlock.alpha = if (mainViewModel.subscriptionId.isEmpty() || isSelected) 1.0f else 0.5f
+            ivIndicator.visibility = if (isSelected && subId.isNotEmpty()) View.VISIBLE else View.GONE
+
+            val isExpanded = expandedSubscriptions.contains(url)
+            rvServers.visibility = if (isExpanded) View.VISIBLE else View.GONE
+            ivExpand.rotation = if (isExpanded) 180f else 0f
+
+            viewSelect.setOnClickListener {
+                if (subId.isEmpty()) return@setOnClickListener
+                mainViewModel.subscriptionIdChanged(if (mainViewModel.subscriptionId == subId) "" else subId)
+                if (subId.isNotEmpty()) expandedSubscriptions.add(url)
+            }
+
+            viewExpand.setOnClickListener {
+                if (expandedSubscriptions.contains(url)) expandedSubscriptions.remove(url) else expandedSubscriptions.add(url)
+                refreshSelectedServer()
+            }
+
+            if (subId.isNotEmpty() && isExpanded) {
+                val serversInSub = allServers.filter { it.profile.subscriptionId == subId }
+                if (serversInSub.isNotEmpty()) {
+                    val adapter = ServersAdapter(false)
+                    rvServers.adapter = adapter
+                    adapter.submitList(serversInSub)
+                }
+            }
+            binding.layoutRecentServers.addView(subBlock)
+        }
+        binding.cardRecent.alpha = 1.0f
+    }
+
+    private fun updateStandardLayout(filteredRecent: List<Pair<String, ProfileItem>>, currentGuid: String?) {
+        binding.layoutRecentServers.removeAllViews()
+        if (filteredRecent.isEmpty()) {
+            binding.cardRecent.visibility = View.GONE
+            binding.tvRecentLabel.visibility = View.GONE
+        } else {
+            binding.cardRecent.visibility = View.VISIBLE
+            binding.tvRecentLabel.visibility = View.VISIBLE
+            filteredRecent.forEach { (guid, profile) ->
+                addServerToLayout(guid, profile, currentGuid, fromRecent = true)
+            }
+        }
+
+        if (currentGuid != null) {
+            if (selectionFromRecent) {
                 binding.cardRecent.alpha = 1.0f
+                binding.rvTopServers.alpha = 0.5f
+            } else {
+                binding.cardRecent.alpha = 0.5f
                 binding.rvTopServers.alpha = 1.0f
             }
-            updateTop10List()
+        } else {
+            binding.cardRecent.alpha = 1.0f
+            binding.rvTopServers.alpha = 1.0f
         }
     }
 
@@ -643,6 +637,7 @@ class MainActivity : BaseActivity() {
         private var items = listOf<ServersCache>()
 
         fun submitList(newItems: List<ServersCache>) {
+            // Fix for Issue 1: Removed equality check that suppressed updates when selection changed
             items = newItems
             notifyDataSetChanged()
         }
@@ -697,15 +692,13 @@ class MainActivity : BaseActivity() {
     }
 
     private fun applyRunningState(isRunning: Boolean) {
-        if (isRunning) {
-            binding.fab.setIconResource(R.drawable.ic_stop_24dp)
-            binding.fab.backgroundTintList = ColorStateList.valueOf(ContextCompat.getColor(this, R.color.color_fab_active))
-            setTestState(getString(R.string.connection_connected))
-        } else {
-            binding.fab.setIconResource(R.drawable.ic_play_24dp)
-            binding.fab.backgroundTintList = ColorStateList.valueOf(ContextCompat.getColor(this, R.color.color_fab_inactive))
-            setTestState(getString(R.string.connection_not_connected))
-        }
+        val iconRes = if (isRunning) R.drawable.ic_stop_24dp else R.drawable.ic_play_24dp
+        val colorRes = if (isRunning) R.color.color_fab_active else R.color.color_fab_inactive
+        val testState = if (isRunning) R.string.connection_connected else R.string.connection_not_connected
+        
+        binding.fab.setIconResource(iconRes)
+        binding.fab.backgroundTintList = ColorStateList.valueOf(ContextCompat.getColor(this, colorRes))
+        setTestState(getString(testState))
         updateFabAndTestState()
     }
 
@@ -720,9 +713,7 @@ class MainActivity : BaseActivity() {
                 val method = menu.javaClass.getDeclaredMethod("setOptionalIconsVisible", java.lang.Boolean.TYPE)
                 method.isAccessible = true
                 method.invoke(menu, true)
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
+            } catch (e: Exception) {}
         }
         return super.onMenuOpened(featureId, menu)
     }
@@ -737,7 +728,7 @@ class MainActivity : BaseActivity() {
                     mainViewModel.testAllRealPing()
                 }
             } else {
-                mainViewModel.testAllRealPing(getStandardServerGuids())
+                importConfigViaSub(triggerPing = true)
             }
             true
         }
@@ -772,7 +763,7 @@ class MainActivity : BaseActivity() {
         lifecycleScope.launch(Dispatchers.IO) {
             val result = mainViewModel.updateConfigViaSubAll()
             delay(500L)
-            launch(Dispatchers.Main) {
+            withContext(Dispatchers.Main) {
                 hideLoading()
                 if (result.successCount > 0 || result.configCount > 0) {
                     mainViewModel.reloadServerList()
@@ -781,7 +772,7 @@ class MainActivity : BaseActivity() {
                         MmkvManager.setSelectServer(allServers[0])
                     }
                     refreshSelectedServer()
-                    toast(getString(R.string.title_update_subscription_result, result.configCount, result.successCount, result.failureCount, result.skipCount))
+                    toast(getString(R.string.title_update_subscription_result,  result.failureCount))
                     if (triggerPing) {
                         if (MmkvManager.decodeSettingsBool(PREF_IS_PREMIUM_MODE, false)) {
                             if (mainViewModel.subscriptionId.isEmpty()) {

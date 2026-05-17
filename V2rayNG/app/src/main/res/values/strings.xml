@@ -322,9 +322,9 @@
     <string name="title_import_config_count">Import %d configs</string>
     <string name="title_export_config_count">Export %d configs</string>
     <string name="title_update_config_count">Update %d configs</string>
-    <string name="title_update_subscription_result">Updated %1$d configs (%2$d success, %3$d failed, %4$d skipped)</string>
+    <string name="title_update_subscription_result">Configs updated (%1$d failed)</string>
     <string name="title_update_subscription_no_subscription">No subscriptions</string>
-    <string name="menu_all_ping">Ping All</string>
+    <string name="menu_all_ping" translatable="false">Ping All</string>
     <string name="toast_server_not_found_in_group">Selected server not found in current group</string>
     <string name="toast_fragment_not_available">Unable to locate current view</string>
     <string name="title_locate_selected_config">Locate the selected config</string>
@@ -366,7 +366,7 @@
     <string name="connection_test_error_status_code">Error code: #%d</string>
     <string name="connection_connected">Connected, tap to check connection</string>
     <string name="connection_not_connected">Not connected</string>
-    <string name="connection_runing_task_left">Number of running test tasks: %s</string>
+    <string name="connection_runing_task_left">Testing: %s</string>
 
     <string name="import_subscription_success">Subscription imported Successfully</string>
     <string name="import_subscription_failure">Import subscription failed</string>
@@ -409,7 +409,7 @@
 
     <string name="plugin_mode_standard">Standard</string>
     <string name="plugin_mode_premium">Premium</string>
-    <string name="plugin_fetch_subscription">Fetching premium subscription...</string>
+    <string name="plugin_fetch_subscription">Fetching premium subscription…</string>
     <string name="plugin_select_subscription">Select Subscription</string>
 
     <string-array name="share_method">

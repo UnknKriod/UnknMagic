@@ -50,7 +50,8 @@ class RealPingWorkerService(
                 } finally {
                     runningCount.decrementAndGet()
                     val completed = completedCount.incrementAndGet()
-                    onEvent(RealPingEvent.Progress("$completed / $totalCount"))
+                    val percentage = (completed * 100) / totalCount
+                    onEvent(RealPingEvent.Progress("$percentage%"))
                 }
             }
         }

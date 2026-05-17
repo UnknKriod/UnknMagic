@@ -31,13 +31,20 @@ object NotificationManager {
     private const val NOTIFICATION_PENDING_INTENT_CONTENT = 0
     private const val NOTIFICATION_PENDING_INTENT_STOP_V2RAY = 1
     private const val NOTIFICATION_PENDING_INTENT_RESTART_V2RAY = 2
-    private const val NOTIFICATION_ICON_THRESHOLD = 3000
-    private const val QUERY_INTERVAL_MS = 3000L
+    private const val QUERY_INTERVAL_MS = 2000L // Slightly faster but still efficient
 
     private var lastQueryTime = 0L
     private var speedNotificationJob: Job? = null
     private var currentRemarks: String? = null
     private var currentChannelId: String? = null
+
+    // Cache components to avoid allocations in the update loop
+    private var cachedContentIntent: PendingIntent? = null
+    private var cachedStopIntent: PendingIntent? = null
+    private var cachedRestartIntent: PendingIntent? = null
+    private var builder: NotificationCompat.Builder? = null
+    
+    private val speedStringBuilder = StringBuilder()
 
     /**
      * Starts the speed notification.
@@ -54,39 +61,42 @@ object NotificationManager {
         speedNotificationJob = CoroutineScope(Dispatchers.IO).launch {
             while (isActive) {
                 val queryTime = System.currentTimeMillis()
-                val sinceLastQueryIn = (queryTime - lastQueryTime)
-
-                if (sinceLastQueryIn < QUERY_INTERVAL_MS) {
-                    LogUtil.w(AppConfig.TAG, "Query interval too short: ${sinceLastQueryIn}ms, skipping")
-                    lastQueryTime = queryTime
+                val sinceLastQueryMs = queryTime - lastQueryTime
+                
+                if (sinceLastQueryMs < 500) { // Safety check against too frequent updates
                     delay(QUERY_INTERVAL_MS)
                     continue
                 }
-                val sinceLastQueryInSeconds = sinceLastQueryIn / 1000.0
+                
+                val sinceLastQueryInSeconds = sinceLastQueryMs / 1000.0
 
                 var proxyTotal = 0L
-                val text = StringBuilder()
+                speedStringBuilder.setLength(0)
+                
                 outboundTags?.forEach {
                     val up = CoreServiceManager.queryStats(it, AppConfig.UPLINK)
                     val down = CoreServiceManager.queryStats(it, AppConfig.DOWNLINK)
                     if (up + down > 0) {
-                        appendSpeedString(text, it, up / sinceLastQueryInSeconds, down / sinceLastQueryInSeconds)
+                        appendSpeedString(speedStringBuilder, it, up / sinceLastQueryInSeconds, down / sinceLastQueryInSeconds)
                         proxyTotal += up + down
                     }
                 }
+                
                 val directUplink = CoreServiceManager.queryStats(AppConfig.TAG_DIRECT, AppConfig.UPLINK)
                 val directDownlink = CoreServiceManager.queryStats(AppConfig.TAG_DIRECT, AppConfig.DOWNLINK)
                 val zeroSpeed = proxyTotal == 0L && directUplink == 0L && directDownlink == 0L
+                
                 if (!zeroSpeed || !lastZeroSpeed) {
                     if (proxyTotal == 0L) {
-                        appendSpeedString(text, outboundTags?.firstOrNull(), 0.0, 0.0)
+                        appendSpeedString(speedStringBuilder, outboundTags?.firstOrNull(), 0.0, 0.0)
                     }
                     appendSpeedString(
-                        text, AppConfig.TAG_DIRECT, directUplink / sinceLastQueryInSeconds,
+                        speedStringBuilder, AppConfig.TAG_DIRECT, directUplink / sinceLastQueryInSeconds,
                         directDownlink / sinceLastQueryInSeconds
                     )
-                    updateNotification(text.toString())
+                    updateNotification(speedStringBuilder.toString())
                 }
+                
                 lastZeroSpeed = zeroSpeed
                 lastQueryTime = queryTime
                 delay(QUERY_INTERVAL_MS)
@@ -95,30 +105,15 @@ object NotificationManager {
     }
 
     /**
-     * Shows the notification.
-     * @param currentConfig The current profile configuration.
+     * Shows the notification and makes the service foreground.
      */
     fun showNotification(currentConfig: ProfileItem?) {
         val service = getService() ?: return
 
-        // Reset last query time to avoid querying stats too soon after showing the notification
         lastQueryTime = System.currentTimeMillis()
-        currentRemarks = currentConfig?.remarks
+        currentRemarks = currentConfig?.remarks ?: "v2rayNG"
 
-        val flags = PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-
-        val startMainIntent = Intent(service, MainActivity::class.java)
-        val contentPendingIntent = PendingIntent.getActivity(service, NOTIFICATION_PENDING_INTENT_CONTENT, startMainIntent, flags)
-
-        val stopV2RayIntent = Intent(AppConfig.BROADCAST_ACTION_SERVICE)
-        stopV2RayIntent.`package` = AppConfig.ANG_PACKAGE
-        stopV2RayIntent.putExtra("key", AppConfig.MSG_STATE_STOP)
-        val stopV2RayPendingIntent = PendingIntent.getBroadcast(service, NOTIFICATION_PENDING_INTENT_STOP_V2RAY, stopV2RayIntent, flags)
-
-        val restartV2RayIntent = Intent(AppConfig.BROADCAST_ACTION_SERVICE)
-        restartV2RayIntent.`package` = AppConfig.ANG_PACKAGE
-        restartV2RayIntent.putExtra("key", AppConfig.MSG_STATE_RESTART)
-        val restartV2RayPendingIntent = PendingIntent.getBroadcast(service, NOTIFICATION_PENDING_INTENT_RESTART_V2RAY, restartV2RayIntent, flags)
+        preparePendingIntents(service)
 
         val channelId = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             createNotificationChannel(service)
@@ -127,17 +122,43 @@ object NotificationManager {
         }
         currentChannelId = channelId
 
-        val builder = buildNotification(
-            service = service,
-            channelId = channelId,
-            contentTitle = currentRemarks,
-            contentText = null,
-            contentPendingIntent = contentPendingIntent,
-            stopPendingIntent = stopV2RayPendingIntent,
-            restartPendingIntent = restartV2RayPendingIntent
-        )
+        val notificationBuilder = NotificationCompat.Builder(service, channelId)
+            .setSmallIcon(R.drawable.ic_stat_notification)
+            .setContentTitle(currentRemarks)
+            .setPriority(NotificationCompat.PRIORITY_LOW) // Changed from MIN to LOW for better visibility
+            .setOngoing(true)
+            .setShowWhen(false)
+            .setOnlyAlertOnce(true)
+            .setCategory(NotificationCompat.CATEGORY_SERVICE)
+            .setContentIntent(cachedContentIntent)
+            .addAction(R.drawable.ic_stop_24dp, service.getString(R.string.notification_action_stop_v2ray), cachedStopIntent)
+            .addAction(R.drawable.ic_refresh_24dp, service.getString(R.string.title_service_restart), cachedRestartIntent)
+        
+        builder = notificationBuilder
+        service.startForeground(NOTIFICATION_ID, notificationBuilder.build())
+    }
 
-        service.startForeground(NOTIFICATION_ID, builder.build())
+    private fun preparePendingIntents(context: Context) {
+        if (cachedContentIntent != null) return
+        
+        val flags = PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+
+        val startMainIntent = Intent(context, MainActivity::class.java).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        }
+        cachedContentIntent = PendingIntent.getActivity(context, NOTIFICATION_PENDING_INTENT_CONTENT, startMainIntent, flags)
+
+        val stopV2RayIntent = Intent(AppConfig.BROADCAST_ACTION_SERVICE).apply {
+            `package` = AppConfig.ANG_PACKAGE
+            putExtra("key", AppConfig.MSG_STATE_STOP)
+        }
+        cachedStopIntent = PendingIntent.getBroadcast(context, NOTIFICATION_PENDING_INTENT_STOP_V2RAY, stopV2RayIntent, flags)
+
+        val restartV2RayIntent = Intent(AppConfig.BROADCAST_ACTION_SERVICE).apply {
+            `package` = AppConfig.ANG_PACKAGE
+            putExtra("key", AppConfig.MSG_STATE_RESTART)
+        }
+        cachedRestartIntent = PendingIntent.getBroadcast(context, NOTIFICATION_PENDING_INTENT_RESTART_V2RAY, restartV2RayIntent, flags)
     }
 
     /**
@@ -151,11 +172,12 @@ object NotificationManager {
         speedNotificationJob = null
         currentRemarks = null
         currentChannelId = null
+        builder = null
+        // We keep cachedIntents for reuse
     }
 
     /**
      * Stops the speed notification.
-     * @param currentConfig The current profile configuration.
      */
     fun stopSpeedNotification(currentConfig: ProfileItem?) {
         speedNotificationJob?.let {
@@ -165,120 +187,48 @@ object NotificationManager {
         }
     }
 
-    /**
-     * Creates a notification channel for Android O and above.
-     * @param service The service context.
-     * @return The channel ID.
-     */
     @RequiresApi(Build.VERSION_CODES.O)
     private fun createNotificationChannel(service: Service): String {
         val channelId = AppConfig.RAY_NG_CHANNEL_ID
         val channelName = AppConfig.RAY_NG_CHANNEL_NAME
         val chan = NotificationChannel(
             channelId,
-            channelName, NotificationManager.IMPORTANCE_HIGH
-        )
-        chan.lightColor = Color.DKGRAY
-        chan.importance = NotificationManager.IMPORTANCE_NONE
-        chan.lockscreenVisibility = Notification.VISIBILITY_PRIVATE
+            channelName, 
+            NotificationManager.IMPORTANCE_LOW // Low importance = no sound, no peek, but visible
+        ).apply {
+            lightColor = Color.DKGRAY
+            lockscreenVisibility = Notification.VISIBILITY_PRIVATE
+            setShowBadge(false)
+        }
+        
         val notificationManager = service.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         notificationManager.createNotificationChannel(chan)
         return channelId
     }
 
     /**
-     * Updates the notification with the given content text.
-     * @param contentText The content text (speed info).
+     * Updates the notification text with minimal overhead.
      */
     private fun updateNotification(contentText: String?) {
         val service = getService() ?: return
-        val channelId = currentChannelId ?: return
-        val remarks = currentRemarks ?: return
+        val currentBuilder = builder ?: return // Should have been initialized in showNotification
 
-        val flags = PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-
-        val startMainIntent = Intent(service, MainActivity::class.java)
-        val contentPendingIntent = PendingIntent.getActivity(service, NOTIFICATION_PENDING_INTENT_CONTENT, startMainIntent, flags)
-
-        val stopV2RayIntent = Intent(AppConfig.BROADCAST_ACTION_SERVICE)
-        stopV2RayIntent.`package` = AppConfig.ANG_PACKAGE
-        stopV2RayIntent.putExtra("key", AppConfig.MSG_STATE_STOP)
-        val stopV2RayPendingIntent = PendingIntent.getBroadcast(service, NOTIFICATION_PENDING_INTENT_STOP_V2RAY, stopV2RayIntent, flags)
-
-        val restartV2RayIntent = Intent(AppConfig.BROADCAST_ACTION_SERVICE)
-        restartV2RayIntent.`package` = AppConfig.ANG_PACKAGE
-        restartV2RayIntent.putExtra("key", AppConfig.MSG_STATE_RESTART)
-        val restartV2RayPendingIntent = PendingIntent.getBroadcast(service, NOTIFICATION_PENDING_INTENT_RESTART_V2RAY, restartV2RayIntent, flags)
-
-        val builder = buildNotification(
-            service = service,
-            channelId = channelId,
-            contentTitle = remarks,
-            contentText = contentText,
-            contentPendingIntent = contentPendingIntent,
-            stopPendingIntent = stopV2RayPendingIntent,
-            restartPendingIntent = restartV2RayPendingIntent
-        )
-
+        currentBuilder.setContentText(contentText)
+        
         val notificationManager = service.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        notificationManager.notify(NOTIFICATION_ID, builder.build())
+        // Optimization: notify() can be expensive, but calling it on the same ID is the way to update.
+        // The Android system handles the throttle internally to some extent, but we have our 2s delay.
+        notificationManager.notify(NOTIFICATION_ID, currentBuilder.build())
     }
 
-    /**
-     * Builds the notification.
-     */
-    private fun buildNotification(
-        service: Service,
-        channelId: String,
-        contentTitle: String?,
-        contentText: String?,
-        contentPendingIntent: PendingIntent,
-        stopPendingIntent: PendingIntent,
-        restartPendingIntent: PendingIntent
-    ): NotificationCompat.Builder {
-        return NotificationCompat.Builder(service, channelId)
-            .setSmallIcon(R.drawable.ic_stat_notification)
-            .setContentTitle(contentTitle)
-            .setContentText(contentText)
-            .setPriority(NotificationCompat.PRIORITY_MIN)
-            .setOngoing(true)
-            .setShowWhen(false)
-            .setOnlyAlertOnce(true)
-            .setCategory(NotificationCompat.CATEGORY_SERVICE)
-            .setContentIntent(contentPendingIntent)
-            .addAction(
-                R.drawable.ic_delete_24dp,
-                service.getString(R.string.notification_action_stop_v2ray),
-                stopPendingIntent
-            )
-            .addAction(
-                R.drawable.ic_delete_24dp,
-                service.getString(R.string.title_service_restart),
-                restartPendingIntent
-            )
-    }
-
-    /**
-     * Appends the speed string to the given text.
-     * @param text The text to append to.
-     * @param name The name of the tag.
-     * @param up The uplink speed.
-     * @param down The downlink speed.
-     */
     private fun appendSpeedString(text: StringBuilder, name: String?, up: Double, down: Double) {
-        var n = name ?: "no tag"
-        n = n.take(min(n.length, 6))
+        val n = (name ?: "proxy").take(6).padEnd(6)
         text.append(n)
-        for (i in n.length..6 step 2) {
-            text.append("\t")
-        }
-        text.append("•  ${up.toLong().toSpeedString()}↑  ${down.toLong().toSpeedString()}↓\n")
+            .append("  ")
+            .append(up.toLong().toSpeedString()).append("↑  ")
+            .append(down.toLong().toSpeedString()).append("↓\n")
     }
 
-    /**
-     * Gets the service instance.
-     * @return The service instance.
-     */
     private fun getService(): Service? {
         return CoreServiceManager.serviceControl?.get()?.getService()
     }

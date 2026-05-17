@@ -34,4 +34,10 @@
 
     </FrameLayout>
 
+    <me.unknkriod.licensechecker.ui.components.LicenseHandleView
+        android:id="@+id/license_handle"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:visibility="gone" />
+
 </androidx.constraintlayout.widget.ConstraintLayout>

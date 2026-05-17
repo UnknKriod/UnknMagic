@@ -8,16 +8,6 @@
             android:summary="@string/summary_pref_speed_enabled"
             android:title="@string/title_pref_speed_enabled" />
 
-        <CheckBoxPreference
-            android:key="pref_confirm_remove"
-            android:summary="@string/summary_pref_confirm_remove"
-            android:title="@string/title_pref_confirm_remove" />
-
-        <CheckBoxPreference
-            android:key="pref_start_scan_immediate"
-            android:summary="@string/summary_pref_start_scan_immediate"
-            android:title="@string/title_pref_start_scan_immediate" />
-
         <ListPreference
             android:defaultValue="auto"
             android:entries="@array/language_select"
@@ -270,11 +260,6 @@
 
 
     <PreferenceCategory android:title="@string/title_advanced">
-
-        <CheckBoxPreference
-            android:key="pref_is_booted"
-            android:summary="@string/summary_pref_is_booted"
-            android:title="@string/title_pref_is_booted" />
 
         <CheckBoxPreference
             android:key="pref_auto_remove_invalid_after_test"
