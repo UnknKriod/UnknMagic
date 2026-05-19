@@ -407,6 +407,7 @@
     <string name="plugin_mode_premium">Премиум</string>
     <string name="plugin_fetch_subscription">Получение премиум подписки…</string>
     <string name="plugin_select_subscription">Выберите подписку</string>
+    <string name="no_premium_subscriptions">Нет доступных премиум-подписок</string>
 
     <string-array name="share_method">
         <item>QR-код</item>

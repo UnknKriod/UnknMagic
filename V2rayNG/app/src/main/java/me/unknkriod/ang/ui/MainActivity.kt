@@ -36,7 +36,6 @@ import me.unknkriod.ang.dto.ProfileItem
 import me.unknkriod.licensechecker.manager.LicenseManager
 import me.unknkriod.licensechecker.extension.subscription.SubscriptionManager
 import me.unknkriod.licensechecker.data.SubscriptionResponse
-import kotlin.coroutines.resumeWithException
 
 class MainActivity : BaseActivity() {
     private val binding by lazy { ActivityMainBinding.inflate(layoutInflater) }
@@ -95,7 +94,12 @@ class MainActivity : BaseActivity() {
         SubscriptionUpdater.sync()
         
         if (MmkvManager.decodeSettingsBool(PREF_IS_PREMIUM_MODE, false)) {
-            binding.tabMode.getTabAt(1)?.select()
+            if (isExtensionAvailable && getPremiumSubIds().isNotEmpty()) {
+                binding.tabMode.getTabAt(1)?.select()
+            } else {
+                MmkvManager.encodeSettings(PREF_IS_PREMIUM_MODE, false)
+                binding.tabMode.getTabAt(0)?.select()
+            }
         }
         refreshModeUI()
         
@@ -119,9 +123,7 @@ class MainActivity : BaseActivity() {
                             Log.e("v2rayNG", "Failed to start license activity", e)
                         }
                     } else {
-                        if (MmkvManager.decodeSettingsBool(PREF_IS_PREMIUM_MODE, false) && getPremiumSubIds().isEmpty()) {
-                            fetchRemoteSubscriptions()
-                        }
+                        fetchRemoteSubscriptions()
                     }
                 }
             } catch (e: Exception) {
@@ -133,7 +135,9 @@ class MainActivity : BaseActivity() {
     private fun setupPluginUI() {
         if (!isExtensionAvailable) return
 
-        binding.tabMode.visibility = View.VISIBLE
+        if (getPremiumSubIds().isNotEmpty()) {
+            binding.tabMode.visibility = View.VISIBLE
+        }
         findViewById<View>(R.id.license_handle)?.visibility = View.VISIBLE
         
         // Add a small gap between tabs
@@ -163,6 +167,7 @@ class MainActivity : BaseActivity() {
         val isPremium = isExtensionAvailable && MmkvManager.decodeSettingsBool(PREF_IS_PREMIUM_MODE, false)
 
         binding.layoutRecentServers.removeAllViews()
+        binding.tvNoPremiumSubs.visibility = View.GONE
 
         val standardVisibility = if (isPremium) View.GONE else View.VISIBLE
         binding.tvRecentLabel.visibility = standardVisibility
@@ -185,6 +190,7 @@ class MainActivity : BaseActivity() {
             }
         } else {
             binding.cardRecent.visibility = View.VISIBLE // Will be hidden in refreshSelectedServer if empty
+            binding.layoutEmptyTop.visibility = View.GONE // Will be shown in updateTop10List if empty
             binding.tvRecentLabel.text = getString(R.string.recent_servers)
             mainViewModel.subscriptionIdChanged("")
         }
@@ -202,11 +208,24 @@ class MainActivity : BaseActivity() {
                 withContext(Dispatchers.Main) {
                     result.onSuccess { subs ->
                         remoteSubscriptions = subs
+                        
+                        val hasPremium = subs.isNotEmpty() || getPremiumSubIds().isNotEmpty()
+                        binding.tabMode.visibility = if (hasPremium) View.VISIBLE else View.GONE
+                        
+                        if (!hasPremium && MmkvManager.decodeSettingsBool(PREF_IS_PREMIUM_MODE, false)) {
+                            MmkvManager.encodeSettings(PREF_IS_PREMIUM_MODE, false)
+                            binding.tabMode.getTabAt(0)?.select()
+                        }
+
                         syncAndAutoImport(subs)
                         refreshSelectedServer()
                     }.onFailure {
                         Log.e("v2rayNG", "Failed to fetch subscriptions", it)
+                        val hasPremium = getPremiumSubIds().isNotEmpty()
+                        binding.tabMode.visibility = if (hasPremium) View.VISIBLE else View.GONE
+                        
                         toast(it.message ?: "Error fetching subscriptions")
+                        refreshSelectedServer()
                     }
                 }
             } catch (e: Exception) {
@@ -445,44 +464,49 @@ class MainActivity : BaseActivity() {
         // Still using removeAllViews but now only when needed and fewer times.
         // Ideally this should be a RecyclerView with DiffUtil.
         binding.layoutRecentServers.removeAllViews()
-        displayList.forEach { (remarks, url, subId) ->
-            val subBlock = layoutInflater.inflate(R.layout.item_premium_subscription, binding.layoutRecentServers, false)
-            val tvSubName = subBlock.findViewById<TextView>(R.id.tv_sub_name)
-            val ivExpand = subBlock.findViewById<ImageView>(R.id.iv_expand)
-            val rvServers = subBlock.findViewById<RecyclerView>(R.id.rv_servers)
-            val viewSelect = subBlock.findViewById<View>(R.id.view_select_area)
-            val viewExpand = subBlock.findViewById<View>(R.id.view_expand_area)
-            val ivIndicator = subBlock.findViewById<ImageView>(R.id.iv_selected_indicator)
+        if (displayList.isEmpty()) {
+            binding.tvNoPremiumSubs.visibility = View.VISIBLE
+        } else {
+            binding.tvNoPremiumSubs.visibility = View.GONE
+            displayList.forEach { (remarks, url, subId) ->
+                val subBlock = layoutInflater.inflate(R.layout.item_premium_subscription, binding.layoutRecentServers, false)
+                val tvSubName = subBlock.findViewById<TextView>(R.id.tv_sub_name)
+                val ivExpand = subBlock.findViewById<ImageView>(R.id.iv_expand)
+                val rvServers = subBlock.findViewById<RecyclerView>(R.id.rv_servers)
+                val viewSelect = subBlock.findViewById<View>(R.id.view_select_area)
+                val viewExpand = subBlock.findViewById<View>(R.id.view_expand_area)
+                val ivIndicator = subBlock.findViewById<ImageView>(R.id.iv_selected_indicator)
 
-            tvSubName.text = remarks
-            val isSelected = mainViewModel.subscriptionId == subId
-            subBlock.alpha = if (mainViewModel.subscriptionId.isEmpty() || isSelected) 1.0f else 0.5f
-            ivIndicator.visibility = if (isSelected && subId.isNotEmpty()) View.VISIBLE else View.GONE
+                tvSubName.text = remarks
+                val isSelected = mainViewModel.subscriptionId == subId
+                subBlock.alpha = if (mainViewModel.subscriptionId.isEmpty() || isSelected) 1.0f else 0.5f
+                ivIndicator.visibility = if (isSelected && subId.isNotEmpty()) View.VISIBLE else View.GONE
 
-            val isExpanded = expandedSubscriptions.contains(url)
-            rvServers.visibility = if (isExpanded) View.VISIBLE else View.GONE
-            ivExpand.rotation = if (isExpanded) 180f else 0f
+                val isExpanded = expandedSubscriptions.contains(url)
+                rvServers.visibility = if (isExpanded) View.VISIBLE else View.GONE
+                ivExpand.rotation = if (isExpanded) 180f else 0f
 
-            viewSelect.setOnClickListener {
-                if (subId.isEmpty()) return@setOnClickListener
-                mainViewModel.subscriptionIdChanged(if (mainViewModel.subscriptionId == subId) "" else subId)
-                if (subId.isNotEmpty()) expandedSubscriptions.add(url)
-            }
-
-            viewExpand.setOnClickListener {
-                if (expandedSubscriptions.contains(url)) expandedSubscriptions.remove(url) else expandedSubscriptions.add(url)
-                refreshSelectedServer()
-            }
-
-            if (subId.isNotEmpty() && isExpanded) {
-                val serversInSub = allServers.filter { it.profile.subscriptionId == subId }
-                if (serversInSub.isNotEmpty()) {
-                    val adapter = ServersAdapter(false)
-                    rvServers.adapter = adapter
-                    adapter.submitList(serversInSub)
+                viewSelect.setOnClickListener {
+                    if (subId.isEmpty()) return@setOnClickListener
+                    mainViewModel.subscriptionIdChanged(if (mainViewModel.subscriptionId == subId) "" else subId)
+                    if (subId.isNotEmpty()) expandedSubscriptions.add(url)
                 }
+
+                viewExpand.setOnClickListener {
+                    if (expandedSubscriptions.contains(url)) expandedSubscriptions.remove(url) else expandedSubscriptions.add(url)
+                    refreshSelectedServer()
+                }
+
+                if (subId.isNotEmpty() && isExpanded) {
+                    val serversInSub = allServers.filter { it.profile.subscriptionId == subId }
+                    if (serversInSub.isNotEmpty()) {
+                        val adapter = ServersAdapter(false)
+                        rvServers.adapter = adapter
+                        adapter.submitList(serversInSub)
+                    }
+                }
+                binding.layoutRecentServers.addView(subBlock)
             }
-            binding.layoutRecentServers.addView(subBlock)
         }
         binding.cardRecent.alpha = 1.0f
     }

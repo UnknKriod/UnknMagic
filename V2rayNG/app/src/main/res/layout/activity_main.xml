@@ -110,6 +110,16 @@
                 android:layout_marginTop="8dp"
                 android:orientation="vertical">
 
+                <TextView
+                    android:id="@+id/tv_no_premium_subs"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:padding="24dp"
+                    android:gravity="center"
+                    android:text="@string/no_premium_subscriptions"
+                    android:textColor="@color/color_fab_inactive"
+                    android:visibility="gone" />
+
                 <LinearLayout
                     android:id="@+id/layout_recent_servers"
                     android:layout_width="match_parent"

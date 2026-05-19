@@ -4,4 +4,7 @@
     <foreground>
         <inset android:drawable="@drawable/ic_app_icon_foreground" />
     </foreground>
+    <monochrome>
+        <inset android:drawable="@drawable/ic_app_icon_foreground" />
+    </monochrome>
 </adaptive-icon>

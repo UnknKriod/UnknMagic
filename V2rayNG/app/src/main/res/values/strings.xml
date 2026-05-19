@@ -411,6 +411,7 @@
     <string name="plugin_mode_premium">Premium</string>
     <string name="plugin_fetch_subscription">Fetching premium subscription…</string>
     <string name="plugin_select_subscription">Select Subscription</string>
+    <string name="no_premium_subscriptions">No premium subscriptions available</string>
 
     <string-array name="share_method">
         <item>QRcode</item>
