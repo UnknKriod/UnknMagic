@@ -102,7 +102,11 @@ class MainActivity : BaseActivity() {
             }
         }
         refreshModeUI()
-        
+    }
+
+    override fun onStart() {
+        super.onStart()
+        val licenseManager = if (isExtensionAvailable) LicenseManager.getInstance(this@MainActivity) else null
         checkLicenseAuth(licenseManager)
     }
 
@@ -835,9 +839,8 @@ class MainActivity : BaseActivity() {
     }
 
     private val requestLicenseAuth = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
-        if (it.resultCode == RESULT_OK) {
-            fetchRemoteSubscriptions()
-        }
+        val manager = if (isExtensionAvailable) LicenseManager.getInstance(this@MainActivity) else null
+        checkLicenseAuth(manager)
     }
 
     private val requestVpnPermission = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
