@@ -114,11 +114,11 @@ class MainActivity : BaseActivity() {
                 val isValid = manager?.isLicenseValidLocally()
 
                 withContext(Dispatchers.Main) {
-                    if (!isValid!!) {
+                    if (isValid != true) {
                         try {
                             val loginIntent = Intent(this@MainActivity, me.unknkriod.licensechecker.MainActivity::class.java)
-                            loginIntent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-                            startActivity(loginIntent)
+                            loginIntent.flags = Intent.FLAG_ACTIVITY_CLEAR_TOP
+                            requestLicenseAuth.launch(loginIntent)
                         } catch (e: Exception) {
                             Log.e("v2rayNG", "Failed to start license activity", e)
                         }
@@ -271,7 +271,7 @@ class MainActivity : BaseActivity() {
 
             if (anyUpdate) {
                 withContext(Dispatchers.Main) {
-                    importConfigViaSub(triggerPing = false)
+                    importConfigViaSub(triggerPing = false, forceSubIds = premiumIds.toList())
                 }
             }
         }
@@ -782,10 +782,26 @@ class MainActivity : BaseActivity() {
         else -> super.onOptionsItemSelected(item)
     }
 
-    fun importConfigViaSub(triggerPing: Boolean = false): Boolean {
+    fun importConfigViaSub(triggerPing: Boolean = false, forceSubIds: List<String>? = null): Boolean {
         showLoading()
         lifecycleScope.launch(Dispatchers.IO) {
-            val result = mainViewModel.updateConfigViaSubAll()
+            val subIds = if (forceSubIds != null) {
+                forceSubIds
+            } else {
+                val isPremium = isExtensionAvailable && MmkvManager.decodeSettingsBool(PREF_IS_PREMIUM_MODE, false)
+                if (isPremium) {
+                    if (mainViewModel.subscriptionId.isNotEmpty()) {
+                        listOf(mainViewModel.subscriptionId)
+                    } else {
+                        getPremiumSubIds().toList()
+                    }
+                } else {
+                    val premiumIds = getPremiumSubIds()
+                    MmkvManager.decodeSubscriptions().map { it.guid }.filter { !premiumIds.contains(it) }
+                }
+            }
+
+            val result = mainViewModel.updateConfigViaSubAll(subIds)
             delay(500L)
             withContext(Dispatchers.Main) {
                 hideLoading()
@@ -816,6 +832,12 @@ class MainActivity : BaseActivity() {
             }
         }
         return true
+    }
+
+    private val requestLicenseAuth = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+        if (it.resultCode == RESULT_OK) {
+            fetchRemoteSubscriptions()
+        }
     }
 
     private val requestVpnPermission = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {

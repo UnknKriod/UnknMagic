@@ -145,15 +145,24 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /**
-     * Updates the configuration via subscription for all servers.
+     * Updates the configuration via subscription for specified or all subscriptions.
+     * @param subIds List of subscription GUIDs to update. If null, uses [subscriptionId] or all.
      * @return Detailed result of the subscription update operation.
      */
-    fun updateConfigViaSubAll(): SubscriptionUpdateResult {
-        if (subscriptionId.isEmpty()) {
-            return AngConfigManager.updateConfigViaSubAll()
+    fun updateConfigViaSubAll(subIds: List<String>? = null): SubscriptionUpdateResult {
+        val targetIds = subIds ?: if (subscriptionId.isNotEmpty()) listOf(subscriptionId) else null
+        
+        return if (targetIds != null) {
+            targetIds.fold(SubscriptionUpdateResult()) { acc, id ->
+                val subItem = MmkvManager.decodeSubscription(id)
+                if (subItem != null) {
+                    acc + AngConfigManager.updateConfigViaSub(SubscriptionCache(id, subItem))
+                } else {
+                    acc
+                }
+            }
         } else {
-            val subItem = MmkvManager.decodeSubscription(subscriptionId) ?: return SubscriptionUpdateResult()
-            return AngConfigManager.updateConfigViaSub(SubscriptionCache(subscriptionId, subItem))
+            AngConfigManager.updateConfigViaSubAll()
         }
     }
 
