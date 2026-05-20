@@ -1,8 +1,18 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     id("com.jaredsburrows.license")
+}
+
+val localProperties = Properties()
+val localPropertiesFile = rootProject.file("local.properties")
+if (localPropertiesFile.exists()) {
+    val inputStream = localPropertiesFile.inputStream()
+    localProperties.load(inputStream)
+    inputStream.close()
 }
 
 android {
@@ -41,10 +51,14 @@ android {
 
     signingConfigs {
         create("release") {
-            val storeFilePath = project.findProperty("RELEASE_STORE_FILE") as String?
-            val storePasswordProp = project.findProperty("RELEASE_STORE_PASSWORD") as String?
-            val keyAliasProp = project.findProperty("RELEASE_KEY_ALIAS") as String?
-            val keyPasswordProp = project.findProperty("RELEASE_KEY_PASSWORD") as String?
+            val storeFilePath = (project.findProperty("RELEASE_STORE_FILE") as String?)
+                ?: localProperties.getProperty("RELEASE_STORE_FILE")
+            val storePasswordProp = (project.findProperty("RELEASE_STORE_PASSWORD") as String?)
+                ?: localProperties.getProperty("RELEASE_STORE_PASSWORD")
+            val keyAliasProp = (project.findProperty("RELEASE_KEY_ALIAS") as String?)
+                ?: localProperties.getProperty("RELEASE_KEY_ALIAS")
+            val keyPasswordProp = (project.findProperty("RELEASE_KEY_PASSWORD") as String?)
+                ?: localProperties.getProperty("RELEASE_KEY_PASSWORD")
 
             if (storeFilePath != null && storePasswordProp != null && keyAliasProp != null && keyPasswordProp != null) {
                 storeFile = file(storeFilePath)
@@ -57,7 +71,11 @@ android {
 
     buildTypes {
         release {
-            signingConfig = signingConfigs.getByName("release")
+            signingConfigs.getByName("release").let {
+                if (it.storeFile != null) {
+                    signingConfig = it
+                }
+            }
 
             isMinifyEnabled = false
             proguardFiles(
