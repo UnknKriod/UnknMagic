@@ -3,6 +3,8 @@ package me.unknkriod.ang.ui
 import android.content.Intent
 import android.content.res.ColorStateList
 import android.net.VpnService
+import java.net.HttpURLConnection
+import java.net.URL
 import android.os.Bundle
 import android.util.Log
 import android.view.Menu
@@ -93,14 +95,7 @@ class MainActivity : BaseActivity() {
         mainViewModel.initAssets(assets)
         SubscriptionUpdater.sync()
         
-        if (MmkvManager.decodeSettingsBool(PREF_IS_PREMIUM_MODE, false)) {
-            if (isExtensionAvailable && getPremiumSubIds().isNotEmpty()) {
-                binding.tabMode.getTabAt(1)?.select()
-            } else {
-                MmkvManager.encodeSettings(PREF_IS_PREMIUM_MODE, false)
-                binding.tabMode.getTabAt(0)?.select()
-            }
-        }
+        checkConnectivityAndSwitchTab()
         refreshModeUI()
     }
 
@@ -132,6 +127,34 @@ class MainActivity : BaseActivity() {
                 }
             } catch (e: Exception) {
                 Log.e("Unknown Magic", "Exception in checkLicenseAuth", e)
+            }
+        }
+    }
+
+    private fun checkConnectivityAndSwitchTab() {
+        lifecycleScope.launch(Dispatchers.IO) {
+            val isConnected = try {
+                val url = URL("http://www.gstatic.com/generate_204")
+                val connection = url.openConnection() as HttpURLConnection
+                connection.connectTimeout = 3000
+                connection.readTimeout = 3000
+                connection.instanceFollowRedirects = false
+                val responseCode = connection.responseCode
+                connection.disconnect()
+                responseCode == 204
+            } catch (e: Exception) {
+                false
+            }
+
+            withContext(Dispatchers.Main) {
+                val targetTab = if (isConnected && isExtensionAvailable && getPremiumSubIds().isNotEmpty()) 1 else 0
+                if (binding.tabMode.selectedTabPosition != targetTab) {
+                    binding.tabMode.post {
+                        binding.tabMode.getTabAt(targetTab)?.select()
+                    }
+                } else {
+                    refreshModeUI()
+                }
             }
         }
     }
@@ -190,7 +213,7 @@ class MainActivity : BaseActivity() {
                 }
             }
 
-            if (getPremiumSubIds().isEmpty()) {
+            if (getPremiumSubIds().isEmpty() || remoteSubscriptions.isEmpty()) {
                 fetchRemoteSubscriptions()
             }
         } else {
@@ -433,12 +456,22 @@ class MainActivity : BaseActivity() {
                         val url = remote.url
                         val remarks = remote.remarks
                         val importedSub = currentSubs.find { it.subscription.url == url }
+                        if (importedSub != null && importedSub.guid == mainViewModel.subscriptionId) {
+                            expandedSubscriptions.add(url)
+                        }
                         Triple(remarks, url, importedSub?.guid ?: "")
                     }
                 } else {
                     currentSubs.filter { premiumIds.contains(it.guid) }.map {
+                        if (it.guid == mainViewModel.subscriptionId) {
+                            expandedSubscriptions.add(it.subscription.url)
+                        }
                         Triple(it.subscription.remarks, it.subscription.url, it.guid)
                     }
+                }
+
+                if (displayList.size == 1) {
+                    expandedSubscriptions.add(displayList[0].second)
                 }
 
                 withContext(Dispatchers.Main) {
