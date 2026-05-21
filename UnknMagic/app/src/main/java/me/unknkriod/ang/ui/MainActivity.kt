@@ -33,6 +33,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import me.unknkriod.ang.AppConfig
 import me.unknkriod.ang.dto.SubscriptionItem
 import me.unknkriod.ang.dto.ProfileItem
 import me.unknkriod.ang.util.LicenseProvider
@@ -121,7 +122,7 @@ class MainActivity : BaseActivity() {
     private fun checkConnectivityAndSwitchTab() {
         lifecycleScope.launch(Dispatchers.IO) {
             val isConnected = try {
-                val url = URL("http://www.gstatic.com/generate_204")
+                val url = URL(AppConfig.DELAY_TEST_URL)
                 val connection = url.openConnection() as HttpURLConnection
                 connection.connectTimeout = 3000
                 connection.readTimeout = 3000
