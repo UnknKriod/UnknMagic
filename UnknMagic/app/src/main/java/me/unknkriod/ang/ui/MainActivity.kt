@@ -171,6 +171,7 @@ class MainActivity : BaseActivity() {
         val isPremium = isExtensionAvailable && MmkvManager.decodeSettingsBool(PREF_IS_PREMIUM_MODE, false)
 
         binding.layoutRecentServers.removeAllViews()
+        premiumAdapters.clear()
         binding.tvNoPremiumSubs.visibility = View.GONE
 
         val standardVisibility = if (isPremium) View.GONE else View.VISIBLE
@@ -464,52 +465,95 @@ class MainActivity : BaseActivity() {
         }
     }
 
+    private val premiumAdapters = mutableMapOf<String, ServersAdapter>()
+
     private fun updatePremiumLayout(displayList: List<Triple<String, String, String>>, allServers: List<ServersCache>) {
-        // Still using removeAllViews but now only when needed and fewer times.
-        // Ideally this should be a RecyclerView with DiffUtil.
-        binding.layoutRecentServers.removeAllViews()
         if (displayList.isEmpty()) {
+            binding.layoutRecentServers.removeAllViews()
             binding.tvNoPremiumSubs.visibility = View.VISIBLE
-        } else {
-            binding.tvNoPremiumSubs.visibility = View.GONE
-            displayList.forEach { (remarks, url, subId) ->
-                val subBlock = layoutInflater.inflate(R.layout.item_premium_subscription, binding.layoutRecentServers, false)
-                val tvSubName = subBlock.findViewById<TextView>(R.id.tv_sub_name)
-                val ivExpand = subBlock.findViewById<ImageView>(R.id.iv_expand)
-                val rvServers = subBlock.findViewById<RecyclerView>(R.id.rv_servers)
-                val viewSelect = subBlock.findViewById<View>(R.id.view_select_area)
-                val viewExpand = subBlock.findViewById<View>(R.id.view_expand_area)
-                val ivIndicator = subBlock.findViewById<ImageView>(R.id.iv_selected_indicator)
+            premiumAdapters.clear()
+            return
+        }
 
-                tvSubName.text = remarks
-                val isSelected = mainViewModel.subscriptionId == subId
-                subBlock.alpha = if (mainViewModel.subscriptionId.isEmpty() || isSelected) 1.0f else 0.5f
-                ivIndicator.visibility = if (isSelected && subId.isNotEmpty()) View.VISIBLE else View.GONE
+        binding.tvNoPremiumSubs.visibility = View.GONE
+        
+        // Remove views that are no longer in displayList
+        val currentUrls = displayList.map { it.second }.toSet()
+        val toRemove = mutableListOf<View>()
+        for (i in 0 until binding.layoutRecentServers.childCount) {
+            val child = binding.layoutRecentServers.getChildAt(i)
+            val url = child.tag as? String
+            if (url == null || !currentUrls.contains(url)) {
+                toRemove.add(child)
+            }
+        }
+        toRemove.forEach { 
+            binding.layoutRecentServers.removeView(it)
+            (it.tag as? String)?.let { url -> premiumAdapters.remove(url) }
+        }
 
-                val isExpanded = expandedSubscriptions.contains(url)
-                rvServers.visibility = if (isExpanded) View.VISIBLE else View.GONE
-                ivExpand.rotation = if (isExpanded) 180f else 0f
+        displayList.forEachIndexed { index, (remarks, url, subId) ->
+            var subBlock = binding.layoutRecentServers.findViewWithTag<View>(url)
+            val isNew = subBlock == null
+            
+            if (isNew) {
+                subBlock = layoutInflater.inflate(R.layout.item_premium_subscription, binding.layoutRecentServers, false)
+                subBlock.tag = url
+            }
 
-                viewSelect.setOnClickListener {
-                    if (subId.isEmpty()) return@setOnClickListener
-                    mainViewModel.subscriptionIdChanged(if (mainViewModel.subscriptionId == subId) "" else subId)
-                    if (subId.isNotEmpty()) expandedSubscriptions.add(url)
-                }
+            val tvSubName = subBlock!!.findViewById<TextView>(R.id.tv_sub_name)
+            val ivExpand = subBlock.findViewById<ImageView>(R.id.iv_expand)
+            val rvServers = subBlock.findViewById<RecyclerView>(R.id.rv_servers)
+            val viewSelect = subBlock.findViewById<View>(R.id.view_select_area)
+            val viewExpand = subBlock.findViewById<View>(R.id.view_expand_area)
+            val ivIndicator = subBlock.findViewById<ImageView>(R.id.iv_selected_indicator)
 
-                viewExpand.setOnClickListener {
-                    if (expandedSubscriptions.contains(url)) expandedSubscriptions.remove(url) else expandedSubscriptions.add(url)
-                    refreshSelectedServer()
-                }
+            tvSubName.text = remarks
+            val isSelected = mainViewModel.subscriptionId == subId
+            subBlock.alpha = if (mainViewModel.subscriptionId.isEmpty() || isSelected) 1.0f else 0.5f
+            ivIndicator.visibility = if (isSelected && subId.isNotEmpty()) View.VISIBLE else View.GONE
 
-                if (subId.isNotEmpty() && isExpanded) {
-                    val serversInSub = allServers.filter { it.profile.subscriptionId == subId }
-                    if (serversInSub.isNotEmpty()) {
-                        val adapter = ServersAdapter(false)
-                        rvServers.adapter = adapter
-                        adapter.submitList(serversInSub)
+            val isExpanded = expandedSubscriptions.contains(url)
+            rvServers.visibility = if (isExpanded) View.VISIBLE else View.GONE
+            ivExpand.rotation = if (isExpanded) 180f else 0f
+
+            viewSelect.setOnClickListener {
+                if (subId.isEmpty()) return@setOnClickListener
+                mainViewModel.subscriptionIdChanged(if (mainViewModel.subscriptionId == subId) "" else subId)
+                if (subId.isNotEmpty()) expandedSubscriptions.add(url)
+                // We don't call refreshSelectedServer() here anymore because subscriptionId is Observed? 
+                // Wait, mainViewModel.subscriptionId is not observed, it's just a property.
+                // But subscriptionIdChanged might trigger something.
+                refreshSelectedServer()
+            }
+
+            viewExpand.setOnClickListener {
+                if (expandedSubscriptions.contains(url)) expandedSubscriptions.remove(url) else expandedSubscriptions.add(url)
+                refreshSelectedServer()
+            }
+
+            if (subId.isNotEmpty() && isExpanded) {
+                val serversInSub = allServers.filter { it.profile.subscriptionId == subId }
+                if (serversInSub.isNotEmpty()) {
+                    val adapter = premiumAdapters.getOrPut(url) { 
+                        ServersAdapter(false).also { rvServers.adapter = it }
                     }
+                    if (rvServers.adapter != adapter) {
+                        rvServers.adapter = adapter
+                    }
+                    adapter.submitList(serversInSub)
                 }
-                binding.layoutRecentServers.addView(subBlock)
+            }
+
+            if (isNew) {
+                binding.layoutRecentServers.addView(subBlock, index)
+            } else {
+                // Ensure correct order if it somehow changed
+                val currentIndex = binding.layoutRecentServers.indexOfChild(subBlock)
+                if (currentIndex != index) {
+                    binding.layoutRecentServers.removeView(subBlock)
+                    binding.layoutRecentServers.addView(subBlock, index)
+                }
             }
         }
         binding.cardRecent.alpha = 1.0f
@@ -573,7 +617,12 @@ class MainActivity : BaseActivity() {
 
         itemView.setOnClickListener {
             selectionFromRecent = fromRecent
-            MmkvManager.setSelectServer(guid)
+            val currentSelect = MmkvManager.getSelectServer()
+            if (currentSelect == guid) {
+                MmkvManager.setSelectServer("")
+            } else {
+                MmkvManager.setSelectServer(guid)
+            }
             refreshSelectedServer()
             if (mainViewModel.isRunning.value == true) {
                 restartV2Ray()
@@ -648,12 +697,24 @@ class MainActivity : BaseActivity() {
     }
 
     private fun updateFabAndTestState() {
-        val allServers = MmkvManager.decodeAllServerList()
-        val hasTestedServer = allServers.any { guid ->
-            (MmkvManager.decodeServerAffiliationInfo(guid)?.testDelayMillis ?: 0L) > 0
-        }
         val isRunning = mainViewModel.isRunning.value == true
-        val shouldEnable = isRunning || (allServers.isNotEmpty() && hasTestedServer)
+        val currentGuid = MmkvManager.getSelectServer()
+        val isPremiumMode = isExtensionAvailable && MmkvManager.decodeSettingsBool(PREF_IS_PREMIUM_MODE, false)
+
+        val isServerSelected = if (currentGuid.isNullOrEmpty()) {
+            false
+        } else {
+            val profile = MmkvManager.decodeServerConfig(currentGuid)
+            if (profile == null) {
+                false
+            } else {
+                val premiumIds = getPremiumSubIds()
+                val isPremiumServer = premiumIds.contains(profile.subscriptionId)
+                isPremiumMode == isPremiumServer
+            }
+        }
+
+        val shouldEnable = isRunning || isServerSelected
 
         binding.fab.isEnabled = shouldEnable
         binding.tvTestState.isEnabled = shouldEnable
@@ -663,11 +724,36 @@ class MainActivity : BaseActivity() {
 
     private inner class ServersAdapter(private val fromRecent: Boolean) : RecyclerView.Adapter<ServersAdapter.ViewHolder>() {
         private var items = listOf<ServersCache>()
+        private var selectedGuid: String? = null
 
         fun submitList(newItems: List<ServersCache>) {
-            // Fix for Issue 1: Removed equality check that suppressed updates when selection changed
+            val newSelectedGuid = MmkvManager.getSelectServer()
+            val oldItems = items
+            val oldSelectedGuid = selectedGuid
+            
             items = newItems
-            notifyDataSetChanged()
+            selectedGuid = newSelectedGuid
+            
+            androidx.recyclerview.widget.DiffUtil.calculateDiff(object : androidx.recyclerview.widget.DiffUtil.Callback() {
+                override fun getOldListSize(): Int = oldItems.size
+                override fun getNewListSize(): Int = newItems.size
+                override fun areItemsTheSame(oldItemPosition: Int, newItemPosition: Int): Boolean {
+                    return oldItems[oldItemPosition].guid == newItems[newItemPosition].guid
+                }
+                override fun areContentsTheSame(oldItemPosition: Int, newItemPosition: Int): Boolean {
+                    val old = oldItems[oldItemPosition]
+                    val new = newItems[newItemPosition]
+                    val oldDelay = MmkvManager.decodeServerAffiliationInfo(old.guid)?.testDelayMillis ?: 0L
+                    val newDelay = MmkvManager.decodeServerAffiliationInfo(new.guid)?.testDelayMillis ?: 0L
+                    
+                    val wasSelected = old.guid == oldSelectedGuid
+                    val isSelected = new.guid == newSelectedGuid
+                    
+                    return old.profile.remarks == new.profile.remarks && 
+                           oldDelay == newDelay && 
+                           wasSelected == isSelected
+                }
+            }).dispatchUpdatesTo(this)
         }
 
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
@@ -687,9 +773,8 @@ class MainActivity : BaseActivity() {
                 holder.tvPing.setTextColor(0xFFFF0000.toInt())
             }
 
-            val currentGuid = MmkvManager.getSelectServer()
             val layoutContent: View = holder.itemView.findViewById(R.id.layout_content)
-            if (item.guid == currentGuid) {
+            if (item.guid == selectedGuid) {
                 holder.ivCurrent.visibility = View.VISIBLE
                 layoutContent.setBackgroundResource(R.drawable.ic_rounded_corner_active)
                 layoutContent.backgroundTintList = ColorStateList.valueOf(0x1A000000)
@@ -702,7 +787,12 @@ class MainActivity : BaseActivity() {
 
             holder.itemView.setOnClickListener {
                 selectionFromRecent = fromRecent
-                MmkvManager.setSelectServer(item.guid)
+                val currentSelect = MmkvManager.getSelectServer()
+                if (currentSelect == item.guid) {
+                    MmkvManager.setSelectServer("")
+                } else {
+                    MmkvManager.setSelectServer(item.guid)
+                }
                 refreshSelectedServer()
                 if (mainViewModel.isRunning.value == true) {
                     restartV2Ray()
@@ -815,10 +905,6 @@ class MainActivity : BaseActivity() {
                 hideLoading()
                 if (result.successCount > 0 || result.configCount > 0) {
                     mainViewModel.reloadServerList()
-                    val allServers = MmkvManager.decodeAllServerList()
-                    if (allServers.isNotEmpty() && MmkvManager.getSelectServer().isNullOrEmpty()) {
-                        MmkvManager.setSelectServer(allServers[0])
-                    }
                     refreshSelectedServer()
                     toast(getString(R.string.title_update_subscription_result,  result.failureCount))
                     if (triggerPing) {
