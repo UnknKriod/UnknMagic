@@ -87,14 +87,14 @@ android {
 
     flavorDimensions.add("distribution")
     productFlavors {
-        create("fdroid") {
+        create("free") {
             dimension = "distribution"
-            applicationIdSuffix = ".fdroid"
-            buildConfigField("String", "DISTRIBUTION", "\"F-Droid\"")
+            applicationIdSuffix = ".free"
+            buildConfigField("String", "DISTRIBUTION", "\"Free\"")
         }
-        create("playstore") {
+        create("premium") {
             dimension = "distribution"
-            buildConfigField("String", "DISTRIBUTION", "\"Play Store\"")
+            buildConfigField("String", "DISTRIBUTION", "\"Premium\"")
         }
     }
 
@@ -118,8 +118,8 @@ android {
 
     applicationVariants.all {
         val variant = this
-        val isFdroid = variant.productFlavors.any { it.name == "fdroid" }
-        if (isFdroid) {
+        val isFree = variant.productFlavors.any { it.name == "free" }
+        if (isFree) {
             val versionCodes =
                 mapOf(
                     "armeabi-v7a" to 2, "arm64-v8a" to 1, "x86" to 4, "x86_64" to 3, "universal" to 0
@@ -129,7 +129,7 @@ android {
                 .map { it as com.android.build.gradle.internal.api.ApkVariantOutputImpl }
                 .forEach { output ->
                     val abi = output.getFilter("ABI") ?: "universal"
-                    output.outputFileName = "UnknMagic_${variant.versionName}-fdroid_${abi}.apk"
+                    output.outputFileName = "UnknMagic_${variant.versionName}-free_${abi}.apk"
                     if (versionCodes.containsKey(abi)) {
                         output.versionCodeOverride =
                             (100 * variant.versionCode + versionCodes[abi]!!).plus(5000000)

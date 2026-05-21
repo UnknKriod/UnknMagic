@@ -54,11 +54,6 @@
         android:usesCleartextTraffic="true"
         tools:replace="android:theme">
 
-        <activity
-            android:name="me.unknkriod.licensechecker.MainActivity"
-            android:exported="false"
-            android:theme="@style/AppThemeDayNight.NoActionBar"
-            tools:replace="android:exported,android:theme" />
 
         <activity
             android:name="me.unknkriod.ang.ui.MainActivity"
@@ -74,10 +69,6 @@
                 <action android:name="android.service.quicksettings.action.QS_TILE_PREFERENCES" />
             </intent-filter>
 
-            <intent-filter>
-                <action android:name="me.unknkriod.licensechecker.ACTION_LICENSE_CHECK_PASSED" />
-                <category android:name="android.intent.category.DEFAULT" />
-            </intent-filter>
 
             <meta-data
                 android:name="android.app.shortcuts"

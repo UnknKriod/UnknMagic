@@ -1,32 +1,50 @@
-# v2rayNG
+# UnknMagic
 
-A V2Ray client for Android, support [Xray core](https://github.com/XTLS/Xray-core) and [v2fly core](https://github.com/v2fly/v2ray-core)
+**UnknMagic** — это специализированный Android-клиент на базе [v2rayNG](https://github.com/2dust/v2rayNG), оптимизированный для работы в условиях жестких сетевых ограничений, таких как «белые списки» (когда доступ разрешен только к ограниченному перечню ресурсов).
 
 [![API](https://img.shields.io/badge/API-24%2B-yellow.svg?style=flat)](https://developer.android.com/about/versions/lollipop)
 [![Kotlin Version](https://img.shields.io/badge/Kotlin-2.3.0-blue.svg)](https://kotlinlang.org)
-[![GitHub commit activity](https://img.shields.io/github/commit-activity/m/2dust/v2rayNG)](https://github.com/2dust/v2rayNG/commits/master)
-[![CodeFactor](https://www.codefactor.io/repository/github/2dust/v2rayng/badge)](https://www.codefactor.io/repository/github/2dust/v2rayng)
-[![GitHub Releases](https://img.shields.io/github/downloads/2dust/v2rayNG/latest/total?logo=github)](https://github.com/2dust/v2rayNG/releases)
-[![Chat on Telegram](https://img.shields.io/badge/Chat%20on-Telegram-brightgreen.svg)](https://t.me/v2rayn)
+[![License](https://img.shields.io/badge/License-GPL%20v3-blue.svg)](https://github.com/2dust/v2rayNG/blob/master/LICENSE)
 
-### Telegram Channel
-[github_2dust](https://t.me/github_2dust)
+## Основные особенности
 
-### Usage
+- **Вшитые сервера**: Приложение поставляется с предустановленным списком серверов, который обновляется автоматически. Пользователю не нужно искать или добавлять конфигурации вручную.
+- **Обход «белых списков»**: В приложение интегрированы специфические правила маршрутизации (включая наборы правил для РФ), которые позволяют автоматически определять, какой трафик должен идти через прокси, а какой — напрямую.
+- **Упрощенный интерфейс**: Из приложения удалены функции ручного импорта, что делает его максимально доступным — «нажал и работает».
 
-#### Geoip and Geosite
-- geoip.dat and geosite.dat files are in `Android/data/com.v2ray.ang/files/assets` (path may differ on some Android device)
-- download feature will get enhanced version in this [repo](https://github.com/Loyalsoldier/v2ray-rules-dat) (Note it need a working proxy)
-- latest official [domain list](https://github.com/Loyalsoldier/v2ray-rules-dat) and [ip list](https://github.com/Loyalsoldier/geoip) can be imported manually
-- possible to use third party dat file in the same folder, like [h2y](https://guide.v2fly.org/routing/sitedata.html#%E5%A4%96%E7%BD%AE%E7%9A%84%E5%9F%9F%E5%90%8D%E6%96%87%E4%BB%B6)
+## Лицензирование и Премиум-функции
 
-### More in our [wiki](https://github.com/2dust/v2rayNG/wiki)
+Доступ к приложению и расширенному списку серверов управляется через систему `UnknKriod/LicenseChecker` и `UnknKriod/LicenseCheckerSubscriptionExtension`.
 
-### Development guide
+**Важное примечание для разработчиков:**
+Механизмы авторизации и получения премиум-серверов активируются **только при наличии** соответствующих библиотек (AAR/JAR) в папке:
+`UnknMagic/app/libs`
 
-Android project under V2rayNG folder can be compiled directly in Android Studio, or using Gradle wrapper. But the v2ray core inside the aar is (probably) outdated.  
-The aar can be compiled from the Golang project [AndroidLibV2rayLite](https://github.com/2dust/AndroidLibV2rayLite) or [AndroidLibXrayLite](https://github.com/2dust/AndroidLibXrayLite).
-For a quick start, read guide for [Go Mobile](https://github.com/golang/go/wiki/Mobile) and [Makefiles for Go Developers](https://tutorialedge.net/golang/makefiles-for-go-developers/)
+Если библиотеки отсутствуют, приложение будет работать в ограниченном режиме или требовать их наличия для корректного функционирования подписок.
 
-v2rayNG can run on Android Emulators. For WSA, VPN permission need to be granted via
-`appops set [package name] ACTIVATE_VPN allow`
+## Скриншоты
+
+| Главный экран | Список серверов | Статус подключения |
+| :---: | :---: | :---: |
+| ![Main Screen](https://via.placeholder.com/200x400?text=Main+Screen) | ![Servers](https://via.placeholder.com/200x400?text=Servers) | ![Connected](https://via.placeholder.com/200x400?text=Connected) |
+
+## Технические подробности
+
+- **Ядро**: Xray Core.
+- **Протоколы**: VLESS, VMESS, Trojan и др.
+- **Авто-обновление**: Реализовано через встроенный механизм подписок, завязанный на ID пользователя.
+
+## Сборка
+
+Для успешной сборки полной версии приложения убедитесь, что все проприетарные зависимости проекта `UnknKriod` помещены в директорию `app/libs`. После этого используйте стандартные средства сборки:
+
+```bash
+./gradlew assembleRelease
+```
+
+## Отказ от ответственности (Disclaimer)
+
+1. **Использование на свой страх и риск**: Данное программное обеспечение предоставляется «как есть» (as is). Авторы не несут ответственности за возможный ущерб, потерю данных или блокировки аккаунтов, возникшие в результате использования данного приложения.
+2. **Соблюдение законодательства**: Пользователь несет полную личную ответственность за соблюдение местного законодательства при использовании инструментов для изменения сетевого трафика.
+3. **Отсутствие гарантий**: Авторы не гарантируют 100% доступность серверов или обход всех видов сетевых ограничений, так как это зависит от условий интернет-провайдеров и действий третьих лиц.
+4. **Конфиденциальность**: Приложение не собирает личные данные, кроме тех, что необходимы для работы системы лицензирования (если применимо).

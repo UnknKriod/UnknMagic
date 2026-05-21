@@ -35,35 +35,23 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import me.unknkriod.ang.dto.SubscriptionItem
 import me.unknkriod.ang.dto.ProfileItem
-import me.unknkriod.licensechecker.manager.LicenseManager
-import me.unknkriod.licensechecker.extension.subscription.SubscriptionManager
-import me.unknkriod.licensechecker.data.SubscriptionResponse
+import me.unknkriod.ang.util.LicenseProvider
+import me.unknkriod.ang.util.RemoteSubscription
 
 class MainActivity : BaseActivity() {
     private val binding by lazy { ActivityMainBinding.inflate(layoutInflater) }
     private val mainViewModel: MainViewModel by viewModels()
     private val topServersAdapter by lazy { ServersAdapter(false) }
     private var selectionFromRecent: Boolean = false
-    private var remoteSubscriptions: List<SubscriptionResponse> = emptyList()
+    private var remoteSubscriptions: List<RemoteSubscription> = emptyList()
     private val expandedSubscriptions = mutableSetOf<String>()
     private var isFetchingRemote = false
 
-    private val isExtensionAvailable by lazy {
-        try {
-            LicenseManager::class.java
-            SubscriptionManager::class.java
-            true
-        } catch (_: NoClassDefFoundError) {
-            false
-        } catch (_: Exception) {
-            false
-        }
-    }
+    private val licenseBridge by lazy { LicenseProvider.get() }
+    private val isExtensionAvailable get() = licenseBridge.isExtensionAvailable
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
-        val licenseManager = if (isExtensionAvailable) LicenseManager.getInstance(this@MainActivity) else null
 
         setContentViewWithToolbar(binding.root, showHomeAsUp = false, title = getString(R.string.app_name))
 
@@ -101,23 +89,22 @@ class MainActivity : BaseActivity() {
 
     override fun onStart() {
         super.onStart()
-        val licenseManager = if (isExtensionAvailable) LicenseManager.getInstance(this@MainActivity) else null
-        checkLicenseAuth(licenseManager)
+        checkLicenseAuth()
     }
 
-    private fun checkLicenseAuth(manager: LicenseManager?) {
+    private fun checkLicenseAuth() {
         if (!isExtensionAvailable) return
         
         lifecycleScope.launch(Dispatchers.Default) {
             try {
-                val isValid = manager?.isLicenseValidLocally()
+                val isValid = licenseBridge.isLicenseValid(this@MainActivity)
 
                 withContext(Dispatchers.Main) {
-                    if (isValid != true) {
+                    if (!isValid) {
                         try {
-                            val loginIntent = Intent(this@MainActivity, me.unknkriod.licensechecker.MainActivity::class.java)
-                            loginIntent.flags = Intent.FLAG_ACTIVITY_CLEAR_TOP
-                            requestLicenseAuth.launch(loginIntent)
+                            licenseBridge.getLicenseActivityIntent(this@MainActivity)?.let {
+                                requestLicenseAuth.launch(it)
+                            }
                         } catch (e: Exception) {
                             Log.e("Unknown Magic", "Failed to start license activity", e)
                         }
@@ -226,12 +213,11 @@ class MainActivity : BaseActivity() {
     }
 
     private fun fetchRemoteSubscriptions() {
-        if (isFetchingRemote) return
+        if (isFetchingRemote || !isExtensionAvailable) return
         isFetchingRemote = true
         lifecycleScope.launch(Dispatchers.Default) {
             try {
-                val manager = SubscriptionManager(this@MainActivity)
-                val result = manager.getRemoteSubscriptions()
+                val result = licenseBridge.getRemoteSubscriptions(this@MainActivity)
                 
                 withContext(Dispatchers.Main) {
                     result.onSuccess { subs ->
@@ -264,7 +250,7 @@ class MainActivity : BaseActivity() {
         }
     }
 
-    private fun syncAndAutoImport(subs: List<SubscriptionResponse>) {
+    private fun syncAndAutoImport(subs: List<RemoteSubscription>) {
         lifecycleScope.launch(Dispatchers.Default) {
             var anyUpdate = false
             val currentSubs = MmkvManager.decodeSubscriptions()
@@ -962,8 +948,7 @@ class MainActivity : BaseActivity() {
     }
 
     private val requestLicenseAuth = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
-        val manager = if (isExtensionAvailable) LicenseManager.getInstance(this@MainActivity) else null
-        checkLicenseAuth(manager)
+        checkLicenseAuth()
     }
 
     private val requestVpnPermission = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
