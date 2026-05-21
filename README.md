@@ -36,7 +36,7 @@
 
 Интерфейс приложения
 
-<video src="github_assets/free_ui.mp4" width="300" />
+<video src="github_assets/free_ui.mp4" width="300"></video>
 
 ## Технические подробности
 
