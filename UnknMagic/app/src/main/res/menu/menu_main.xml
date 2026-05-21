@@ -27,6 +27,11 @@
         android:icon="@drawable/ic_file_24dp"
         app:showAsAction="never" />
     <item
+        android:id="@+id/logcat"
+        android:title="@string/title_logcat"
+        android:icon="@drawable/ic_logcat_24dp"
+        app:showAsAction="never" />
+    <item
         android:id="@+id/settings"
         android:title="@string/title_settings"
         android:icon="@drawable/ic_settings_24dp"

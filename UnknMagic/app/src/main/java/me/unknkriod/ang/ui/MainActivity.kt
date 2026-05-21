@@ -922,6 +922,10 @@ class MainActivity : BaseActivity() {
             startActivity(Intent(this, UserAssetActivity::class.java))
             true
         }
+        R.id.logcat -> {
+            startActivity(Intent(this, LogcatActivity::class.java))
+            true
+        }
         R.id.settings -> {
             startActivity(Intent(this, SettingsActivity::class.java))
             true
