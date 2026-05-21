@@ -225,7 +225,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
         viewModelScope.launch(Dispatchers.Default) {
             if (targetGuids.isEmpty()) {
+                onTestsFinished()
                 return@launch
+            }
+            withContext(Dispatchers.Main) {
+                updateTestResultAction.value = getApplication<AngApplication>().getString(R.string.connection_test_testing)
             }
             MessageUtil.sendMsg2TestService(
                 getApplication(),
@@ -242,6 +246,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
      * Tests the real ping for the current server.
      */
     fun testCurrentServerRealPing() {
+        updateTestResultAction.value = getApplication<AngApplication>().getString(R.string.connection_test_testing)
         MessageUtil.sendMsg2Service(getApplication(), AppConfig.MSG_MEASURE_DELAY, "")
     }
 
@@ -420,11 +425,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         override fun onReceive(ctx: Context?, intent: Intent?) {
             when (intent?.getIntExtra("key", 0)) {
                 AppConfig.MSG_STATE_RUNNING -> {
-                    isRunning.value = true
+                    if (isRunning.value != true) isRunning.value = true
                 }
 
                 AppConfig.MSG_STATE_NOT_RUNNING -> {
-                    isRunning.value = false
+                    if (isRunning.value != false) isRunning.value = false
                 }
 
                 AppConfig.MSG_STATE_START_SUCCESS -> {
@@ -444,22 +449,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
 
                 AppConfig.MSG_STATE_STOP_SUCCESS -> {
-                    isRunning.value = false
+                    if (isRunning.value != false) isRunning.value = false
                 }
 
                 AppConfig.MSG_MEASURE_DELAY_SUCCESS -> {
-                    updateTestResultAction.value = intent.getStringExtra("content")
+                    updateTestResultAction.value = intent.extras?.get("content")?.toString()
                 }
 
                 AppConfig.MSG_MEASURE_CONFIG_SUCCESS -> {
-                    val content = intent.getStringExtra("content")
+                    val content = intent.extras?.get("content")?.toString()
                     updateListAction.value = getPosition(content ?: "")
                 }
 
                 AppConfig.MSG_MEASURE_CONFIG_NOTIFY -> {
-                    val content = intent.getStringExtra("content")
-                    updateTestResultAction.value =
-                        getApplication<AngApplication>().getString(R.string.connection_runing_task_left, content)
+                    val content = intent.extras?.get("content")?.toString()
+                    if (!content.isNullOrEmpty()) {
+                        updateTestResultAction.value = content
+                    }
                 }
 
                 AppConfig.MSG_MEASURE_CONFIG_FINISH -> {

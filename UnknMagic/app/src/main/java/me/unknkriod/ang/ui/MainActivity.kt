@@ -722,11 +722,15 @@ class MainActivity : BaseActivity() {
     private fun applyRunningState(isRunning: Boolean) {
         val iconRes = if (isRunning) R.drawable.ic_stop_24dp else R.drawable.ic_play_24dp
         val colorRes = if (isRunning) R.color.color_fab_active else R.color.color_fab_inactive
-        val testState = if (isRunning) R.string.connection_connected else R.string.connection_not_connected
         
         binding.fab.setIconResource(iconRes)
         binding.fab.backgroundTintList = ColorStateList.valueOf(ContextCompat.getColor(this, colorRes))
-        setTestState(getString(testState))
+
+        val isTesting = mainViewModel.updateTestResultAction.value != null
+        if (!isTesting || isRunning) {
+            val testState = if (isRunning) R.string.connection_connected else R.string.connection_not_connected
+            setTestState(getString(testState))
+        }
         updateFabAndTestState()
     }
 

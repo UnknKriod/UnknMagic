@@ -109,12 +109,13 @@ class CoreTestService : Service() {
     private fun handleWorkerEvent(event: RealPingEvent, onWorkerDone: () -> Unit) {
         when (event) {
             is RealPingEvent.Progress -> {
+                val progressText = getString(R.string.connection_runing_task_left, event.text)
                 NotificationHelper.updateNotification(
                     channelType = NotificationChannelType.CORE_TEST,
                     context = this,
-                    content = getString(R.string.connection_runing_task_left, event.text)
+                    content = progressText
                 )
-                MessageUtil.sendMsg2UI(this, AppConfig.MSG_MEASURE_CONFIG_NOTIFY, event.text)
+                MessageUtil.sendMsg2UI(this, AppConfig.MSG_MEASURE_CONFIG_NOTIFY, progressText)
             }
 
             is RealPingEvent.Result -> {

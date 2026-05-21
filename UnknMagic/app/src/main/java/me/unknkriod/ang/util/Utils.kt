@@ -534,7 +534,7 @@ object Utils {
     fun receiverFlags(): Int = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
         ContextCompat.RECEIVER_EXPORTED
     } else {
-        ContextCompat.RECEIVER_NOT_EXPORTED
+        2 // ContextCompat.RECEIVER_EXPORTED
     }
 
     /**

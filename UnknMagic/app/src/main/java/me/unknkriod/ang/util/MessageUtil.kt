@@ -81,7 +81,7 @@ object MessageUtil {
         try {
             val intent = Intent()
             intent.action = action
-            intent.`package` = AppConfig.ANG_PACKAGE
+            intent.setPackage(ctx.packageName)
             intent.putExtra("key", what)
             intent.putExtra("content", content)
             ctx.sendBroadcast(intent)
