@@ -1,11 +1,10 @@
 package me.unknkriod.ang.handler
 
 import android.os.Build
-import androidx.multidex.BuildConfig
+import me.unknkriod.ang.BuildConfig
 import me.unknkriod.ang.AppConfig
 import me.unknkriod.ang.dto.CheckUpdateResult
 import me.unknkriod.ang.dto.GitHubRelease
-import me.unknkriod.ang.extension.concatUrl
 import me.unknkriod.ang.util.HttpUtil
 import me.unknkriod.ang.util.JsonUtil
 import me.unknkriod.ang.util.LogUtil
@@ -14,11 +13,7 @@ import kotlinx.coroutines.withContext
 
 object UpdateCheckerManager {
     suspend fun checkForUpdate(includePreRelease: Boolean = false): CheckUpdateResult = withContext(Dispatchers.IO) {
-        val url = if (includePreRelease) {
-            AppConfig.APP_API_URL
-        } else {
-            AppConfig.APP_API_URL.concatUrl("latest")
-        }
+        val url = AppConfig.APP_API_URL
 
         val proxyUsername = SettingsManager.getSocksUsername()
         val proxyPassword = SettingsManager.getSocksPassword()
@@ -30,24 +25,35 @@ object UpdateCheckerManager {
                 ?: throw IllegalStateException("Failed to get response")
         }
 
-        val latestRelease = if (includePreRelease) {
-            JsonUtil.fromJson(response, Array<GitHubRelease>::class.java)
-                ?.firstOrNull()
-                ?: throw IllegalStateException("No pre-release found")
-        } else {
-            JsonUtil.fromJson(response, GitHubRelease::class.java)
+        val allReleases = JsonUtil.fromJson(response, Array<GitHubRelease>::class.java)
+            ?: throw IllegalStateException("Failed to parse releases")
+
+        // Определяем тег для поиска в названии релиза
+        val flavorTag = if (BuildConfig.FLAVOR == "free") "[FREE]" else "[PREMIUM]"
+
+        // Находим последний подходящий релиз
+        val latestRelease = allReleases.firstOrNull { release ->
+            val matchesFlavor = release.tagName.contains(flavorTag, ignoreCase = true) || 
+                               release.body.contains(flavorTag, ignoreCase = true)
+            
+            if (includePreRelease) {
+                matchesFlavor
+            } else {
+                matchesFlavor && !release.prerelease
+            }
         }
+
         if (latestRelease == null) {
             return@withContext CheckUpdateResult(hasUpdate = false)
         }
 
-        val latestVersion = latestRelease.tagName.removePrefix("v")
+        val latestVersion = latestRelease.tagName.removePrefix("v").split(" ")[0]
         LogUtil.i(
             AppConfig.TAG,
-            "Found new version: $latestVersion (current: ${BuildConfig.VERSION_NAME})"
+            "Found version for $flavorTag: $latestVersion (current: ${BuildConfig.VERSION_NAME})"
         )
 
-        return@withContext if (compareVersions(latestVersion, BuildConfig.VERSION_NAME) > 0) {
+        if (compareVersions(latestVersion, BuildConfig.VERSION_NAME) > 0) {
             val downloadUrl = getDownloadUrl(latestRelease, Build.SUPPORTED_ABIS[0])
             CheckUpdateResult(
                 hasUpdate = true,
@@ -66,27 +72,26 @@ object UpdateCheckerManager {
         val v2 = version2.split(".")
 
         for (i in 0 until maxOf(v1.size, v2.size)) {
-            val num1 = if (i < v1.size) v1[i].toInt() else 0
-            val num2 = if (i < v2.size) v2[i].toInt() else 0
+            val num1 = v1.getOrNull(i)?.filter { it.isDigit() }?.toIntOrNull() ?: 0
+            val num2 = v2.getOrNull(i)?.filter { it.isDigit() }?.toIntOrNull() ?: 0
             if (num1 != num2) return num1 - num2
         }
         return 0
     }
 
     private fun getDownloadUrl(release: GitHubRelease, abi: String): String {
-        val free = "free"
+        val flavor = BuildConfig.FLAVOR // "free" или "premium"
 
+        // Сначала фильтруем по архитектуре (ABI)
         val assetsByAbi = release.assets.filter {
-            (it.name.contains(abi, true))
+            it.name.contains(abi, true)
         }
 
-        val asset = if (BuildConfig.APPLICATION_ID.contains(free, ignoreCase = true)) {
-            assetsByAbi.firstOrNull { it.name.contains(free) }
-        } else {
-            assetsByAbi.firstOrNull { !it.name.contains(free) }
-        }
+        // Затем ищем APK, который содержит название нашего флавора в имени файла
+        val asset = assetsByAbi.firstOrNull { it.name.contains(flavor, ignoreCase = true) }
+            ?: assetsByAbi.firstOrNull() // Если по флавору не нашли, берем первый подходящий по ABI
 
         return asset?.browserDownloadUrl
-            ?: throw IllegalStateException("No compatible APK found")
+            ?: throw IllegalStateException("No compatible APK found for $flavor ($abi)")
     }
 }

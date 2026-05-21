@@ -4,7 +4,7 @@ import android.os.Bundle
 import androidx.appcompat.app.AlertDialog
 import androidx.lifecycle.lifecycleScope
 import me.unknkriod.ang.AppConfig
-import androidx.multidex.BuildConfig
+import me.unknkriod.ang.BuildConfig
 import me.unknkriod.ang.R
 import me.unknkriod.ang.core.CoreNativeManager
 import me.unknkriod.ang.databinding.ActivityCheckUpdateBinding

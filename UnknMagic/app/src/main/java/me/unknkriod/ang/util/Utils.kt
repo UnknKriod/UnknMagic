@@ -16,7 +16,7 @@ import android.webkit.URLUtil
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
 import me.unknkriod.ang.AppConfig
-import androidx.multidex.BuildConfig
+import me.unknkriod.ang.BuildConfig
 import java.io.IOException
 import java.net.InetAddress
 import java.net.ServerSocket

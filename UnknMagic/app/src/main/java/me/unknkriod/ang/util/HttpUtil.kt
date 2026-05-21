@@ -1,7 +1,7 @@
 package me.unknkriod.ang.util
 
 import me.unknkriod.ang.AppConfig
-import androidx.multidex.BuildConfig
+import me.unknkriod.ang.BuildConfig
 import okhttp3.Credentials
 import okhttp3.OkHttpClient
 import okhttp3.Request

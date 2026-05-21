@@ -4,7 +4,7 @@ import android.app.AlertDialog
 import android.os.Bundle
 import android.webkit.WebView
 import me.unknkriod.ang.AppConfig
-import androidx.multidex.BuildConfig
+import me.unknkriod.ang.BuildConfig
 import me.unknkriod.ang.R
 import me.unknkriod.ang.core.CoreNativeManager
 import me.unknkriod.ang.databinding.ActivityAboutBinding

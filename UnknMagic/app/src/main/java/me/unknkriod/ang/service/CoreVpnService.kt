@@ -16,7 +16,7 @@ import android.os.ParcelFileDescriptor
 import android.os.StrictMode
 import androidx.annotation.RequiresApi
 import me.unknkriod.ang.AppConfig
-import androidx.multidex.BuildConfig
+import me.unknkriod.ang.BuildConfig
 import me.unknkriod.ang.contracts.ServiceControl
 import me.unknkriod.ang.contracts.Tun2SocksControl
 import me.unknkriod.ang.core.CoreServiceManager

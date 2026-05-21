@@ -8,7 +8,7 @@ import androidx.lifecycle.lifecycleScope
 import com.tencent.mmkv.MMKV
 import me.unknkriod.ang.AppConfig
 import me.unknkriod.ang.AppConfig.WEBDAV_BACKUP_FILE_NAME
-import androidx.multidex.BuildConfig
+import me.unknkriod.ang.BuildConfig
 import me.unknkriod.ang.R
 import me.unknkriod.ang.databinding.ActivityBackupBinding
 import me.unknkriod.ang.databinding.DialogWebdavBinding

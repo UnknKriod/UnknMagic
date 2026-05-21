@@ -39,6 +39,9 @@ import me.unknkriod.ang.dto.ProfileItem
 import me.unknkriod.ang.util.LicenseProvider
 import me.unknkriod.ang.util.RemoteSubscription
 
+import me.unknkriod.ang.handler.UpdateCheckerManager
+import java.util.concurrent.TimeUnit
+
 class MainActivity : BaseActivity() {
     private val binding by lazy { ActivityMainBinding.inflate(layoutInflater) }
     private val mainViewModel: MainViewModel by viewModels()
@@ -142,6 +145,31 @@ class MainActivity : BaseActivity() {
                     }
                 } else {
                     refreshModeUI()
+                }
+                
+                if (isConnected) {
+                    autoCheckForUpdates()
+                }
+            }
+        }
+    }
+
+    private fun autoCheckForUpdates() {
+        val lastCheck = MmkvManager.decodeSettingsLong(PREF_LAST_UPDATE_CHECK, 0L)
+        val now = System.currentTimeMillis()
+        
+        if (now - lastCheck >= TimeUnit.DAYS.toMillis(1)) {
+            lifecycleScope.launch(Dispatchers.IO) {
+                try {
+                    val result = UpdateCheckerManager.checkForUpdate()
+                    if (result.hasUpdate) {
+                        withContext(Dispatchers.Main) {
+                            startActivity(Intent(this@MainActivity, CheckUpdateActivity::class.java))
+                        }
+                    }
+                    MmkvManager.encodeSettings(PREF_LAST_UPDATE_CHECK, now)
+                } catch (e: Exception) {
+                    Log.e("Unknown Magic", "Auto update check failed", e)
                 }
             }
         }
@@ -714,6 +742,7 @@ class MainActivity : BaseActivity() {
         private const val PREF_IS_PREMIUM_MODE = "is_premium_mode"
         private const val PREF_PREMIUM_SUB_ID = "premium_sub_id"
         private const val PREF_PREMIUM_SUBS_LIST = "premium_subs_list"
+        private const val PREF_LAST_UPDATE_CHECK = "last_update_check_time"
     }
 
     private fun updateFabAndTestState() {

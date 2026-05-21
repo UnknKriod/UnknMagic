@@ -85,16 +85,23 @@ android {
         }
     }
 
+    val licenseEndpoint = localProperties.getProperty("LICENSE_ENDPOINT") ?: "development.eavermine.ru:34809"
+    val premiumUpdateUrl = localProperties.getProperty("PREMIUM_UPDATE_URL") ?: "https://api.github.com/repos/UnknKriod/UnknMagic/releases"
+
     flavorDimensions.add("distribution")
     productFlavors {
         create("free") {
             dimension = "distribution"
             applicationIdSuffix = ".free"
             buildConfigField("String", "DISTRIBUTION", "\"Free\"")
+            buildConfigField("String", "UPDATE_URL", "\"https://api.github.com/repos/UnknKriod/UnknMagic/releases\"")
+            buildConfigField("String", "LICENSE_ENDPOINT", "\"\"")
         }
         create("premium") {
             dimension = "distribution"
             buildConfigField("String", "DISTRIBUTION", "\"Premium\"")
+            buildConfigField("String", "UPDATE_URL", "\"$premiumUpdateUrl\"")
+            buildConfigField("String", "LICENSE_ENDPOINT", "\"$licenseEndpoint\"")
         }
     }
 
