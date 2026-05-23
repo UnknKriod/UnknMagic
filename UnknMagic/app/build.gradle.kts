@@ -1,4 +1,3 @@
-import se.bjurr.gitchangelog.plugin.gradle.GitChangelogTask
 import java.util.Properties
 
 plugins {
@@ -25,8 +24,10 @@ android {
         applicationId = "me.unknkriod.ang"
         minSdk = 24
         targetSdk = 36
-        versionCode = 727
-        versionName = "2.1.7"
+        versionCode = providers.gradleProperty("version-code")
+            .get()
+            .toInt()
+        version = property("version") as String
         multiDexEnabled = true
 
         val abiFilterList = (properties["ABI_FILTERS"] as? String)?.split(';')
@@ -79,7 +80,9 @@ android {
                 }
             }
 
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
+
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
