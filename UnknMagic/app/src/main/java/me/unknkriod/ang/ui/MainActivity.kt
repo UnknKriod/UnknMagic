@@ -355,6 +355,7 @@ class MainActivity : BaseActivity() {
                 if (it.contains("EOF", ignoreCase = true)) {
                     val isPremium = isExtensionAvailable && MmkvManager.decodeSettingsBool(PREF_IS_PREMIUM_MODE, false)
                     if (!isPremium) {
+                        toast(R.string.msg_subscription_auto_update_warning)
                         importConfigViaSub(triggerPing = true)
                     }
                 }

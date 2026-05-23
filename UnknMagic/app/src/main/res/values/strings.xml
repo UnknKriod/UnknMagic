@@ -328,6 +328,7 @@
     <string name="toast_server_not_found_in_group">Selected server not found in current group</string>
     <string name="toast_fragment_not_available">Unable to locate current view</string>
     <string name="title_locate_selected_config">Locate the selected config</string>
+    <string name="msg_subscription_auto_update_warning">Auto-updating subscription due to connection error…</string>
 
     <string name="tasker_start_service">Start Service</string>
     <string name="tasker_setting_confirm">Confirm</string>
