@@ -352,6 +352,12 @@ class MainActivity : BaseActivity() {
                 applyRunningState(mainViewModel.isRunning.value == true)
             } else {
                 setTestState(it)
+                if (it.contains("EOF", ignoreCase = true)) {
+                    val isPremium = isExtensionAvailable && MmkvManager.decodeSettingsBool(PREF_IS_PREMIUM_MODE, false)
+                    if (!isPremium) {
+                        importConfigViaSub(triggerPing = true)
+                    }
+                }
             }
             val now = System.currentTimeMillis()
             if (now - lastUpdateActionTime > 1000) {
