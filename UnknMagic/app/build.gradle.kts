@@ -1,3 +1,4 @@
+import se.bjurr.gitchangelog.plugin.gradle.GitChangelogTask
 import java.util.Properties
 
 plugins {
@@ -5,6 +6,7 @@ plugins {
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     id("com.jaredsburrows.license")
+    id("se.bjurr.gitchangelog.git-changelog-gradle-plugin") version "3.1.2"
 }
 
 val localProperties = Properties()
