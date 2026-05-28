@@ -283,61 +283,57 @@ class MainActivity : BaseActivity() {
         lifecycleScope.launch(Dispatchers.Default) {
             var anyUpdate = false
             val currentSubs = MmkvManager.decodeSubscriptions()
-            val premiumIds = getPremiumSubIds().toMutableSet()
-            var premiumIdsChanged = false
+            val oldPremiumIds = getPremiumSubIds()
+            val newPremiumIds = mutableSetOf<String>()
+            val remoteUrls = subs.map { it.url }.toSet()
 
-            subs.forEach { remote ->
-                val remarks = remote.remarks
-                val url = remote.url
-                
-                if (url.isNotEmpty()) {
-                    val existing = currentSubs.find { it.subscription.url == url }
-                    if (existing == null) {
-                        importRemoteSubscription(remarks, url, silent = true)
+            currentSubs.forEach { sub ->
+                if (oldPremiumIds.contains(sub.guid)) {
+                    if (!remoteUrls.contains(sub.subscription.url)) {
+                        MmkvManager.removeSubscription(sub.guid)
                         anyUpdate = true
-                        premiumIds.addAll(getPremiumSubIds())
                     } else {
-                        if (!premiumIds.contains(existing.guid)) {
-                            premiumIds.add(existing.guid)
-                            premiumIdsChanged = true
-                        }
-                        if (MmkvManager.decodeServerList(existing.guid).isEmpty()) {
-                            anyUpdate = true
-                        }
+                        // Эта подписка остается в списке премиальных
+                        newPremiumIds.add(sub.guid)
                     }
                 }
             }
 
-            if (premiumIdsChanged) {
-                MmkvManager.encodeSettings(PREF_PREMIUM_SUBS_LIST, premiumIds.joinToString(","))
+            subs.forEach { remote ->
+                val url = remote.url
+                if (url.isEmpty()) return@forEach
+
+                val existing = currentSubs.find { it.subscription.url == url }
+                if (existing == null) {
+                    // Импорт новой подписки
+                    val subItem = SubscriptionItem(remarks = remote.remarks, url = url, enabled = true)
+                    val guid = me.unknkriod.ang.util.Utils.getUuid()
+                    MmkvManager.encodeSubscription(guid, subItem)
+                    newPremiumIds.add(guid)
+                    anyUpdate = true
+                } else {
+                    // Если подписка была, но не числилась премиальной
+                    if (!newPremiumIds.contains(existing.guid)) {
+                        newPremiumIds.add(existing.guid)
+                        anyUpdate = true
+                    }
+                    // Если серверов еще нет, нужно обновить
+                    if (MmkvManager.decodeServerList(existing.guid).isEmpty()) {
+                        anyUpdate = true
+                    }
+                }
             }
+
+            MmkvManager.encodeSettings(PREF_PREMIUM_SUBS_LIST, newPremiumIds.joinToString(","))
 
             if (anyUpdate) {
                 withContext(Dispatchers.Main) {
-                    importConfigViaSub(triggerPing = false, forceSubIds = premiumIds.toList())
+                    if (mainViewModel.subscriptionId.isNotEmpty() && !newPremiumIds.contains(mainViewModel.subscriptionId)) {
+                        mainViewModel.subscriptionIdChanged("")
+                    }
+                    importConfigViaSub(triggerPing = false, forceSubIds = newPremiumIds.toList())
                 }
             }
-        }
-    }
-
-    private fun importRemoteSubscription(remarks: String, url: String, silent: Boolean = false) {
-        val subItem = SubscriptionItem(remarks = remarks, url = url, enabled = true)
-        val guid = me.unknkriod.ang.util.Utils.getUuid()
-        MmkvManager.encodeSubscription(guid, subItem)
-        
-        val currentList = MmkvManager.decodeSettingsString(PREF_PREMIUM_SUBS_LIST, "") ?: ""
-        if (!currentList.contains(guid)) {
-            val newList = if (currentList.isEmpty()) guid else "$currentList,$guid"
-            MmkvManager.encodeSettings(PREF_PREMIUM_SUBS_LIST, newList)
-        }
-        
-        if (!silent) {
-            MmkvManager.encodeSettings(PREF_PREMIUM_SUB_ID, guid)
-            toast("Subscription '$remarks' imported")
-            MmkvManager.encodeSettings(PREF_IS_PREMIUM_MODE, true)
-            binding.tabMode.getTabAt(1)?.select()
-            refreshModeUI()
-            importConfigViaSub(triggerPing = true)
         }
     }
 
