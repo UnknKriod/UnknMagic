@@ -50,6 +50,8 @@ class MainActivity : BaseActivity() {
     private var remoteSubscriptions: List<RemoteSubscription> = emptyList()
     private val expandedSubscriptions = mutableSetOf<String>()
     private var isFetchingRemote = false
+    private var lastSelectedServer: String? = null
+    private var lastIsPremium = false
 
     private val licenseBridge by lazy { LicenseProvider.get() }
     private val isExtensionAvailable get() = licenseBridge.isExtensionAvailable
@@ -469,21 +471,23 @@ class MainActivity : BaseActivity() {
                 }
                 val currentSubs = MmkvManager.decodeSubscriptions()
                 
+                if (currentGuid != lastSelectedServer || !lastIsPremium) {
+                    if (!currentGuid.isNullOrEmpty()) {
+                        MmkvManager.decodeServerConfig(currentGuid)?.subscriptionId?.let { subId ->
+                            currentSubs.find { it.guid == subId }?.subscription?.url?.let { expandedSubscriptions.add(it) }
+                        }
+                    }
+                }
+
                 val displayList = if (remoteSubscriptions.isNotEmpty()) {
                     remoteSubscriptions.map { remote ->
                         val url = remote.url
                         val remarks = remote.remarks
                         val importedSub = currentSubs.find { it.subscription.url == url }
-                        if (importedSub != null && importedSub.guid == mainViewModel.subscriptionId) {
-                            expandedSubscriptions.add(url)
-                        }
                         Triple(remarks, url, importedSub?.guid ?: "")
                     }
                 } else {
                     currentSubs.filter { premiumIds.contains(it.guid) }.map {
-                        if (it.guid == mainViewModel.subscriptionId) {
-                            expandedSubscriptions.add(it.subscription.url)
-                        }
                         Triple(it.subscription.remarks, it.subscription.url, it.guid)
                     }
                 }
@@ -510,6 +514,9 @@ class MainActivity : BaseActivity() {
                 }
             }
             
+            lastSelectedServer = currentGuid
+            lastIsPremium = isPremium
+
             withContext(Dispatchers.Main) {
                 updateTop10List()
             }
@@ -527,6 +534,7 @@ class MainActivity : BaseActivity() {
         }
 
         binding.tvNoPremiumSubs.visibility = View.GONE
+        val isSingleSub = displayList.size == 1
         
         // Remove views that are no longer in displayList
         val currentUrls = displayList.map { it.second }.toSet()
@@ -567,6 +575,7 @@ class MainActivity : BaseActivity() {
             val isExpanded = expandedSubscriptions.contains(url)
             rvServers.visibility = if (isExpanded) View.VISIBLE else View.GONE
             ivExpand.rotation = if (isExpanded) 180f else 0f
+            viewExpand.visibility = if (isSingleSub) View.GONE else View.VISIBLE
 
             viewSelect.setOnClickListener {
                 if (subId.isEmpty()) return@setOnClickListener
