@@ -1,3 +1,4 @@
+import se.bjurr.gitchangelog.plugin.gradle.GitChangelogTask
 import java.util.Properties
 
 plugins {
