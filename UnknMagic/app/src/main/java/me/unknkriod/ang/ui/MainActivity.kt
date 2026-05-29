@@ -64,6 +64,7 @@ class MainActivity : BaseActivity() {
 
         binding.fab.setOnClickListener { handleFabAction() }
         binding.tvTestState.setOnClickListener { handleLayoutTestClick() }
+        binding.btnStopTest.setOnClickListener { mainViewModel.stopTest() }
         binding.rvTopServers.adapter = topServersAdapter
 
         binding.btnPingAllEmpty.setOnClickListener {
@@ -351,14 +352,30 @@ class MainActivity : BaseActivity() {
             if (it == null) {
                 isPostUpdatePingInProgress = false
                 applyRunningState(mainViewModel.isRunning.value == true)
+                binding.btnStopTest.visibility = View.GONE
                 return@observe
             }
+
+            val stoppingText = getString(R.string.connection_test_stopping)
+            val isStopping = it == stoppingText
+            
+            if (isStopping) {
+                setTestState(it)
+                binding.btnStopTest.isEnabled = false
+                binding.btnStopTest.alpha = 0.5f
+                binding.btnStopTest.visibility = View.VISIBLE
+                return@observe
+            }
+
+            binding.btnStopTest.isEnabled = true
+            binding.btnStopTest.alpha = 1.0f
+            binding.btnStopTest.visibility = View.VISIBLE
 
             val now = System.currentTimeMillis()
             val isStandardTab = binding.tabMode.selectedTabPosition == 0
             val canAutoUpdate = isStandardTab && (now - lastAutoUpdateTime > 60_000L)
 
-            if (it == "EOF_DETECTED") {
+            if (it == "EOF_DETECTED" || it.contains("EOF", ignoreCase = true)) {
                 if (canAutoUpdate) {
                     lastAutoUpdateTime = now
                     toast(R.string.msg_subscription_auto_update_warning)
@@ -366,14 +383,8 @@ class MainActivity : BaseActivity() {
                 }
                 return@observe
             }
+            
             setTestState(it)
-            if (it.contains("EOF", ignoreCase = true)) {
-                if (canAutoUpdate) {
-                    lastAutoUpdateTime = now
-                    toast(R.string.msg_subscription_auto_update_warning)
-                    importConfigViaSub(triggerPing = true)
-                }
-            }
 
             if (now - lastUpdateActionTime > 1000) {
                 lastUpdateActionTime = now

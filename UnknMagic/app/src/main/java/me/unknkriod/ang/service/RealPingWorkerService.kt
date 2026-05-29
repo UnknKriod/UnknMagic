@@ -44,14 +44,18 @@ class RealPingWorkerService(
                 runningCount.incrementAndGet()
                 try {
                     val result = startRealPing(guid)
-                    onEvent(RealPingEvent.Result(guid, result))
+                    if (job.isActive) {
+                        onEvent(RealPingEvent.Result(guid, result))
+                    }
                 } catch (_: Throwable) {
                     // ignore
                 } finally {
-                    runningCount.decrementAndGet()
-                    val completed = completedCount.incrementAndGet()
-                    val percentage = (completed * 100) / totalCount
-                    onEvent(RealPingEvent.Progress("$percentage%"))
+                    if (job.isActive) {
+                        runningCount.decrementAndGet()
+                        val completed = completedCount.incrementAndGet()
+                        val percentage = (completed * 100) / totalCount
+                        onEvent(RealPingEvent.Progress("$percentage%"))
+                    }
                 }
             }
         }

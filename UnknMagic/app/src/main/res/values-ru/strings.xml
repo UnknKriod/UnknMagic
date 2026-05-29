@@ -364,6 +364,8 @@
     <string name="connection_connected">Соединено, нажмите для проверки</string>
     <string name="connection_not_connected">Нет соединения</string>
     <string name="connection_runing_task_left">Проверено: %s</string>
+    <string name="connection_test_stopping">Остановка…</string>
+    <string name="action_stop_test">Остановить проверку</string>
 
     <string name="import_subscription_success">Подписка импортирована</string>
     <string name="import_subscription_failure">Невозможно импортировать подписку</string>

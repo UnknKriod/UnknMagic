@@ -368,6 +368,8 @@
     <string name="connection_connected">Connected, tap to check connection</string>
     <string name="connection_not_connected">Not connected</string>
     <string name="connection_runing_task_left">Testing: %s</string>
+    <string name="connection_test_stopping">Stopping…</string>
+    <string name="action_stop_test">Stop Testing</string>
 
     <string name="import_subscription_success">Subscription imported Successfully</string>
     <string name="import_subscription_failure">Import subscription failed</string>

@@ -20,6 +20,7 @@ class CoreTestService : Service() {
 
     // manage active batch workers so each batch is independent and cancellable
     private val activeWorkers = Collections.synchronizedList(mutableListOf<RealPingWorkerService>())
+    private var isFinishSent = false
 
     /**
      * Initializes the V2Ray environment.
@@ -47,6 +48,12 @@ class CoreTestService : Service() {
         val snapshot = ArrayList(activeWorkers)
         snapshot.forEach { it.cancel() }
         activeWorkers.clear()
+
+        if (!isFinishSent) {
+            isFinishSent = true
+            MessageUtil.sendMsg2UI(this, AppConfig.MSG_MEASURE_CONFIG_FINISH, "STOPPED")
+        }
+
         NotificationHelper.stopForeground(this)
         super.onDestroy()
     }
@@ -60,24 +67,31 @@ class CoreTestService : Service() {
      */
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val message = intent?.serializable<TestServiceMessage>("content")
+        
+        LogUtil.i(AppConfig.TAG, "CoreTestService onStartCommand key=${message?.key}")
+
         if (message == null) {
             stopSelf(startId)
             return START_NOT_STICKY
         }
 
         when (message.key) {
-            AppConfig.MSG_MEASURE_CONFIG_START -> handleMeasureStart(message, startId)
-            AppConfig.MSG_MEASURE_CONFIG_CANCEL -> handleMeasureCancel()
+            AppConfig.MSG_MEASURE_CONFIG_START -> {
+                isFinishSent = false
+                handleMeasureStart(message, startId)
+            }
+            AppConfig.MSG_MEASURE_CONFIG_CANCEL -> handleMeasureCancel(startId)
             else -> {
-                NotificationHelper.stopForeground(this); stopSelf(startId)
+                stopSelf(startId)
             }
         }
         return START_NOT_STICKY
     }
 
     private fun handleMeasureStart(message: TestServiceMessage, startId: Int) {
-        LogUtil.i(AppConfig.TAG, "CoreTestService starting worker   subscription ${message.subscriptionId}")
+        LogUtil.i(AppConfig.TAG, "CoreTestService handleMeasureStart subscription ${message.subscriptionId}")
 
+        // Always call startForeground first to satisfy Android 8+ requirement
         NotificationHelper.startForeground(
             this,
             NotificationChannelType.CORE_TEST,
@@ -101,7 +115,13 @@ class CoreTestService : Service() {
             activeWorkers.add(worker)
             worker.start()
         } else {
-            NotificationHelper.stopForeground(this)
+            LogUtil.w(AppConfig.TAG, "CoreTestService: guidsList is empty, finishing")
+            if (!isFinishSent) {
+                isFinishSent = true
+                MessageUtil.sendMsg2UI(this, AppConfig.MSG_MEASURE_CONFIG_FINISH, "EMPTY")
+            }
+            // Do not stop immediately, let the system process startForeground
+            // A small delay or just relying on stopSelf(startId) is safer.
             stopSelf(startId)
         }
     }
@@ -124,7 +144,10 @@ class CoreTestService : Service() {
             }
 
             is RealPingEvent.Finish -> {
-                MessageUtil.sendMsg2UI(this, AppConfig.MSG_MEASURE_CONFIG_FINISH, event.status)
+                if (!isFinishSent) {
+                    isFinishSent = true
+                    MessageUtil.sendMsg2UI(this, AppConfig.MSG_MEASURE_CONFIG_FINISH, event.status)
+                }
                 onWorkerDone()
                 if (activeWorkers.isEmpty()) {
                     NotificationHelper.stopForeground(this)
@@ -134,12 +157,22 @@ class CoreTestService : Service() {
         }
     }
 
-    private fun handleMeasureCancel() {
+    private fun handleMeasureCancel(startId: Int) {
         LogUtil.i(AppConfig.TAG, "CoreTestService received cancel message, cancelling ${activeWorkers.size} active workers")
+        
+        // Stop all workers first
         val snapshot = ArrayList(activeWorkers)
         snapshot.forEach { it.cancel() }
         activeWorkers.clear()
+
+        // Send finish message if not sent yet
+        if (!isFinishSent) {
+            isFinishSent = true
+            MessageUtil.sendMsg2UI(this, AppConfig.MSG_MEASURE_CONFIG_FINISH, "STOPPED")
+        }
+
+        // Clean up notification and stop service
         NotificationHelper.stopForeground(this)
-        stopSelf()
+        stopSelf(startId)
     }
 }

@@ -49,6 +49,18 @@
             app:layout_constraintTop_toBottomOf="@id/fab"
             tools:text="Not Connected" />
 
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btn_stop_test"
+            style="@style/Widget.Material3.Button.TextButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/action_stop_test"
+            android:visibility="gone"
+            android:textColor="@color/color_fab_inactive"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/tv_test_state" />
+
         <com.google.android.material.tabs.TabLayout
             android:id="@+id/tab_mode"
             android:layout_width="wrap_content"
@@ -66,7 +78,7 @@
             app:tabPaddingEnd="16dp"
             app:tabMinWidth="100dp"
             app:tabGravity="center"
-            app:layout_constraintTop_toBottomOf="@id/tv_test_state"
+            app:layout_constraintTop_toBottomOf="@id/btn_stop_test"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintEnd_toEndOf="parent">
 

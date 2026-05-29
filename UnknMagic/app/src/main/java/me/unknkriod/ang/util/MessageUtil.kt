@@ -46,23 +46,20 @@ object MessageUtil {
             val intent = Intent()
             intent.component = ComponentName(ctx, CoreTestService::class.java)
             intent.putExtra("content", message)
-            when (message.key) {
-                AppConfig.MSG_MEASURE_CONFIG_START -> {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                        ContextCompat.startForegroundService(ctx, intent)
-                    } else {
-                        ctx.startService(intent)
-                    }
-                }
-
-                AppConfig.MSG_MEASURE_CONFIG_CANCEL -> {
-                    // Do not wake up service just to cancel; stop only if it is already running.
-                    ctx.stopService(intent)
-                }
-
-                else -> {
+            
+            // On Android 12+, we must be very careful with foreground services.
+            // Using startForegroundService only for START.
+            if (message.key == AppConfig.MSG_MEASURE_CONFIG_START) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    ContextCompat.startForegroundService(ctx, intent)
+                } else {
                     ctx.startService(intent)
                 }
+            } else {
+                // For CANCEL or other messages, use normal startService.
+                // If the service is already in foreground, it will stay there.
+                // If it's not running, it will start in background and likely stop immediately.
+                ctx.startService(intent)
             }
         } catch (e: Exception) {
             LogUtil.e(AppConfig.TAG, "Failed to send message to test service", e)

@@ -45,6 +45,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val updateListAction by lazy { MutableLiveData<Int>() }
     val updateTestResultAction by lazy { MutableLiveData<String>() }
     private val tcpingTestScope by lazy { CoroutineScope(Dispatchers.IO) }
+    private var isStoppingTest = false
 
     /**
      * Refer to the official documentation for [registerReceiver](https://developer.android.com/reference/androidx/core/content/ContextCompat#registerReceiver(android.content.Context,android.content.BroadcastReceiver,android.content.IntentFilter,int):
@@ -251,6 +252,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /**
+     * Stops the running test.
+     */
+    fun stopTest() {
+        isStoppingTest = true
+        MessageUtil.sendMsg2TestService(
+            getApplication(),
+            TestServiceMessage(key = AppConfig.MSG_MEASURE_CONFIG_CANCEL)
+        )
+        updateTestResultAction.value = getApplication<AngApplication>().getString(R.string.connection_test_stopping)
+    }
+
+    /**
      * Changes the subscription ID.
      * @param id The new subscription ID.
      */
@@ -406,6 +419,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun onTestsFinished() {
         viewModelScope.launch(Dispatchers.Default) {
+            val wasStopping = isStoppingTest
             if (MmkvManager.decodeSettingsBool(AppConfig.PREF_AUTO_REMOVE_INVALID_AFTER_TEST)) {
                 removeInvalidServer()
             }
@@ -418,12 +432,26 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 updateTestResultAction.value = null
                 reloadServerList()
             }
+
+            if (wasStopping) {
+                kotlinx.coroutines.delay(1000)
+            }
+            isStoppingTest = false
         }
     }
 
     private val mMsgReceiver = object : BroadcastReceiver() {
         override fun onReceive(ctx: Context?, intent: Intent?) {
-            when (intent?.getIntExtra("key", 0)) {
+            val key = intent?.getIntExtra("key", 0)
+
+            // If we are stopping, ignore most test-related updates to prevent UI flicker/restore
+            if (isStoppingTest && (key == AppConfig.MSG_MEASURE_CONFIG_NOTIFY ||
+                        key == AppConfig.MSG_MEASURE_CONFIG_SUCCESS ||
+                        key == AppConfig.MSG_MEASURE_DELAY_SUCCESS)) {
+                return
+            }
+
+            when (key) {
                 AppConfig.MSG_STATE_RUNNING -> {
                     if (isRunning.value != true) isRunning.value = true
                 }
