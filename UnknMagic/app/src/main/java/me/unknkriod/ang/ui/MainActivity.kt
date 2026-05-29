@@ -52,6 +52,7 @@ class MainActivity : BaseActivity() {
     private var isFetchingRemote = false
     private var lastSelectedServer: String? = null
     private var lastIsPremium = false
+    private var isPostUpdatePingInProgress = false
 
     private val licenseBridge by lazy { LicenseProvider.get() }
     private val isExtensionAvailable get() = licenseBridge.isExtensionAvailable
@@ -340,6 +341,7 @@ class MainActivity : BaseActivity() {
     }
 
     private var lastUpdateActionTime = 0L
+    private var lastAutoUpdateTime = 0L
 
     private fun setupViewModel() {
         mainViewModel.isRunning.observe(this) { isRunning ->
@@ -347,18 +349,32 @@ class MainActivity : BaseActivity() {
         }
         mainViewModel.updateTestResultAction.observe(this) {
             if (it == null) {
+                isPostUpdatePingInProgress = false
                 applyRunningState(mainViewModel.isRunning.value == true)
-            } else {
-                setTestState(it)
-                if (it.contains("EOF", ignoreCase = true)) {
-                    val isPremium = isExtensionAvailable && MmkvManager.decodeSettingsBool(PREF_IS_PREMIUM_MODE, false)
-                    if (!isPremium) {
-                        toast(R.string.msg_subscription_auto_update_warning)
-                        importConfigViaSub(triggerPing = true)
-                    }
+                return@observe
+            }
+
+            val now = System.currentTimeMillis()
+            val isStandardTab = binding.tabMode.selectedTabPosition == 0
+            val canAutoUpdate = isStandardTab && (now - lastAutoUpdateTime > 60_000L)
+
+            if (it == "EOF_DETECTED") {
+                if (canAutoUpdate) {
+                    lastAutoUpdateTime = now
+                    toast(R.string.msg_subscription_auto_update_warning)
+                    importConfigViaSub(triggerPing = true)
+                }
+                return@observe
+            }
+            setTestState(it)
+            if (it.contains("EOF", ignoreCase = true)) {
+                if (canAutoUpdate) {
+                    lastAutoUpdateTime = now
+                    toast(R.string.msg_subscription_auto_update_warning)
+                    importConfigViaSub(triggerPing = true)
                 }
             }
-            val now = System.currentTimeMillis()
+
             if (now - lastUpdateActionTime > 1000) {
                 lastUpdateActionTime = now
                 refreshSelectedServer()
@@ -758,6 +774,13 @@ class MainActivity : BaseActivity() {
     }
 
     private fun updateFabAndTestState() {
+        if (isPostUpdatePingInProgress) {
+            binding.fab.isEnabled = false
+            binding.tvTestState.isEnabled = false
+            binding.fab.alpha = 0.6f
+            binding.tvTestState.alpha = 0.6f
+            return
+        }
         val isRunning = mainViewModel.isRunning.value == true
         val currentGuid = MmkvManager.getSelectServer()
         val isPremiumMode = isExtensionAvailable && MmkvManager.decodeSettingsBool(PREF_IS_PREMIUM_MODE, false)
@@ -946,6 +969,7 @@ class MainActivity : BaseActivity() {
     }
 
     fun importConfigViaSub(triggerPing: Boolean = false, forceSubIds: List<String>? = null): Boolean {
+        CoreServiceManager.stopVService(this)
         showLoading()
         lifecycleScope.launch(Dispatchers.IO) {
             val subIds = if (forceSubIds != null) {
@@ -970,6 +994,10 @@ class MainActivity : BaseActivity() {
                 hideLoading()
                 if (result.successCount > 0 || result.configCount > 0) {
                     mainViewModel.reloadServerList()
+                    if (triggerPing) {
+                        isPostUpdatePingInProgress = true
+                        MmkvManager.setSelectServer("")
+                    }
                     refreshSelectedServer()
                     toast(getString(R.string.title_update_subscription_result,  result.failureCount))
                     if (triggerPing) {

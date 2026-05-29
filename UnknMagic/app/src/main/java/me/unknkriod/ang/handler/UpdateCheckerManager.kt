@@ -29,7 +29,7 @@ object UpdateCheckerManager {
             ?: throw IllegalStateException("Failed to parse releases")
 
         // Определяем тег для поиска в названии релиза
-        val flavorTag = if (BuildConfig.FLAVOR == "free") "[FREE]" else "[PREMIUM]"
+        val flavorTag = if (BuildConfig.FLAVOR == "free") "-free" else "-premium"
 
         // Находим последний подходящий релиз
         val latestRelease = allReleases.firstOrNull { release ->

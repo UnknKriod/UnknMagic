@@ -350,6 +350,9 @@ object CoreServiceManager {
             val result = if (time >= 0) {
                 service.getString(R.string.connection_test_available, time)
             } else {
+                if (errorStr.contains("EOF", ignoreCase = true)) {
+                    MessageUtil.sendMsg2UI(service, AppConfig.MSG_MEASURE_DELAY_SUCCESS, "EOF_DETECTED")
+                }
                 service.getString(R.string.connection_test_error, errorStr)
             }
             MessageUtil.sendMsg2UI(service, AppConfig.MSG_MEASURE_DELAY_SUCCESS, result)
