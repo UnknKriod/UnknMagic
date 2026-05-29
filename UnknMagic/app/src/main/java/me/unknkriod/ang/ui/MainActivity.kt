@@ -50,9 +50,14 @@ class MainActivity : BaseActivity() {
     private var remoteSubscriptions: List<RemoteSubscription> = emptyList()
     private val expandedSubscriptions = mutableSetOf<String>()
     private var isFetchingRemote = false
+    private var isSubscriptionUpdating = false
+    private var isBatchTesting = false
+    private var isSingleTesting = false
     private var lastSelectedServer: String? = null
     private var lastIsPremium = false
     private var isPostUpdatePingInProgress = false
+    private var hasSeenTestResult = false
+    private var lastTestStartTime = 0L
 
     private val licenseBridge by lazy { LicenseProvider.get() }
     private val isExtensionAvailable get() = licenseBridge.isExtensionAvailable
@@ -73,6 +78,10 @@ class MainActivity : BaseActivity() {
             if (allServers.isEmpty()) {
                 importConfigViaSub(triggerPing = true)
             } else {
+                isBatchTesting = true
+                hasSeenTestResult = false
+                lastTestStartTime = System.currentTimeMillis()
+                updateUIStates()
                 if (isPremium) {
                     if (mainViewModel.subscriptionId.isEmpty()) {
                         mainViewModel.testAllRealPing(allServers)
@@ -248,6 +257,7 @@ class MainActivity : BaseActivity() {
     private fun fetchRemoteSubscriptions() {
         if (isFetchingRemote || !isExtensionAvailable) return
         isFetchingRemote = true
+        updateUIStates()
         lifecycleScope.launch(Dispatchers.Default) {
             try {
                 val result = licenseBridge.getRemoteSubscriptions(this@MainActivity)
@@ -278,7 +288,10 @@ class MainActivity : BaseActivity() {
             } catch (e: Exception) {
                 Log.e("Unknown Magic", "Exception in fetchRemoteSubscriptions", e)
             } finally {
-                isFetchingRemote = false
+                withContext(Dispatchers.Main) {
+                    isFetchingRemote = false
+                    updateUIStates()
+                }
             }
         }
     }
@@ -345,50 +358,48 @@ class MainActivity : BaseActivity() {
     private var lastAutoUpdateTime = 0L
 
     private fun setupViewModel() {
-        mainViewModel.isRunning.observe(this) { isRunning ->
-            applyRunningState(isRunning = isRunning)
+        mainViewModel.isRunning.observe(this) {
+            updateUIStates()
         }
-        mainViewModel.updateTestResultAction.observe(this) {
-            if (it == null) {
-                isPostUpdatePingInProgress = false
-                applyRunningState(mainViewModel.isRunning.value == true)
-                binding.btnStopTest.visibility = View.GONE
-                return@observe
-            }
-
-            val stoppingText = getString(R.string.connection_test_stopping)
-            val isStopping = it == stoppingText
-            
-            if (isStopping) {
-                setTestState(it)
-                binding.btnStopTest.isEnabled = false
-                binding.btnStopTest.alpha = 0.5f
-                binding.btnStopTest.visibility = View.VISIBLE
-                return@observe
-            }
-
-            binding.btnStopTest.isEnabled = true
-            binding.btnStopTest.alpha = 1.0f
-            binding.btnStopTest.visibility = View.VISIBLE
-
+        mainViewModel.updateTestResultAction.observe(this) { result ->
+            val testingText = getString(R.string.connection_test_testing)
             val now = System.currentTimeMillis()
-            val isStandardTab = binding.tabMode.selectedTabPosition == 0
-            val canAutoUpdate = isStandardTab && (now - lastAutoUpdateTime > 60_000L)
 
-            if (it == "EOF_DETECTED" || it.contains("EOF", ignoreCase = true)) {
+            if (result != null) {
+                if (result != testingText && result != getString(R.string.connection_test_stopping)) {
+                    hasSeenTestResult = true
+                }
+                if (isSingleTesting && result != testingText) {
+                    isSingleTesting = false
+                }
+            } else {
+                if ((isBatchTesting || isPostUpdatePingInProgress) && !hasSeenTestResult && (now - lastTestStartTime < 1000)) {
+                    return@observe
+                }
+                isBatchTesting = false
+                isSingleTesting = false
+                isPostUpdatePingInProgress = false
+            }
+
+            if (result != null && (result == "EOF_DETECTED" || result.contains("EOF", ignoreCase = true))) {
+                val lastAutoUpdate = MmkvManager.decodeSettingsLong("last_auto_update_sub", 0L)
+                val isStandardTab = binding.tabMode.selectedTabPosition == 0
+                val canAutoUpdate = isStandardTab && (now - lastAutoUpdate > 60_000L)
+
                 if (canAutoUpdate) {
-                    lastAutoUpdateTime = now
+                    MmkvManager.encodeSettings("last_auto_update_sub", now)
                     toast(R.string.msg_subscription_auto_update_warning)
                     importConfigViaSub(triggerPing = true)
                 }
-                return@observe
             }
-            
-            setTestState(it)
 
-            if (now - lastUpdateActionTime > 1000) {
-                lastUpdateActionTime = now
-                refreshSelectedServer()
+            updateUIStates()
+
+            if (result != null) {
+                if (now - lastUpdateActionTime > 1000) {
+                    lastUpdateActionTime = now
+                    refreshSelectedServer()
+                }
             }
         }
         mainViewModel.updateListAction.observe(this) {
@@ -451,7 +462,10 @@ class MainActivity : BaseActivity() {
 
     private fun handleLayoutTestClick() {
         if (mainViewModel.isRunning.value == true) {
-            setTestState(getString(R.string.connection_test_testing))
+            isSingleTesting = true
+            hasSeenTestResult = false
+            lastTestStartTime = System.currentTimeMillis()
+            updateUIStates()
             mainViewModel.testCurrentServerRealPing()
         } else {
             toast(R.string.connection_test_fail)
@@ -480,9 +494,7 @@ class MainActivity : BaseActivity() {
         }
     }
 
-    private fun setTestState(content: String?) {
-        binding.tvTestState.text = content
-    }
+
 
     private fun refreshSelectedServer() {
         val isPremium = isExtensionAvailable && MmkvManager.decodeSettingsBool(PREF_IS_PREMIUM_MODE, false)
@@ -750,7 +762,7 @@ class MainActivity : BaseActivity() {
     private fun updateTop10List() {
         val isPremium = isExtensionAvailable && MmkvManager.decodeSettingsBool(PREF_IS_PREMIUM_MODE, false)
         if (isPremium) {
-            updateFabAndTestState()
+            updateUIStates()
             return
         }
 
@@ -774,7 +786,7 @@ class MainActivity : BaseActivity() {
             topServersAdapter.submitList(displayServers)
         }
 
-        updateFabAndTestState()
+        updateUIStates()
     }
 
     companion object {
@@ -784,37 +796,59 @@ class MainActivity : BaseActivity() {
         private const val PREF_LAST_UPDATE_CHECK = "last_update_check_time"
     }
 
-    private fun updateFabAndTestState() {
-        if (isPostUpdatePingInProgress) {
-            binding.fab.isEnabled = false
-            binding.tvTestState.isEnabled = false
-            binding.fab.alpha = 0.6f
-            binding.tvTestState.alpha = 0.6f
-            return
-        }
+    private fun updateUIStates() {
         val isRunning = mainViewModel.isRunning.value == true
+        val testResult = mainViewModel.updateTestResultAction.value
+
+        val isBatch = isBatchTesting || isPostUpdatePingInProgress
+        val isUpdating = isFetchingRemote || isSubscriptionUpdating
+        val isTestingText = testResult == getString(R.string.connection_test_testing)
+        val isStoppingText = testResult == getString(R.string.connection_test_stopping)
+
+        val isHeavyProcess = isBatch || isUpdating
+
+        // 1. FAB (Stop/Play)
         val currentGuid = MmkvManager.getSelectServer()
         val isPremiumMode = isExtensionAvailable && MmkvManager.decodeSettingsBool(PREF_IS_PREMIUM_MODE, false)
-
         val isServerSelected = if (currentGuid.isNullOrEmpty()) {
             false
         } else {
             val profile = MmkvManager.decodeServerConfig(currentGuid)
-            if (profile == null) {
-                false
-            } else {
-                val premiumIds = getPremiumSubIds()
-                val isPremiumServer = premiumIds.contains(profile.subscriptionId)
-                isPremiumMode == isPremiumServer
-            }
+            profile != null && (getPremiumSubIds().contains(profile.subscriptionId) == isPremiumMode)
         }
 
-        val shouldEnable = isRunning || isServerSelected
+        val fabEnabled = (isRunning || isServerSelected) && !isHeavyProcess
+        binding.fab.isEnabled = fabEnabled
+        binding.fab.alpha = if (fabEnabled) 1.0f else 0.6f
 
-        binding.fab.isEnabled = shouldEnable
-        binding.tvTestState.isEnabled = shouldEnable
-        binding.fab.alpha = if (shouldEnable) 1.0f else 0.6f
-        binding.tvTestState.alpha = if (shouldEnable) 1.0f else 0.6f
+        val iconRes = if (isRunning) R.drawable.ic_stop_24dp else R.drawable.ic_play_24dp
+        val colorRes = if (isRunning) R.color.color_fab_active else R.color.color_fab_inactive
+        binding.fab.setIconResource(iconRes)
+        binding.fab.backgroundTintList = ColorStateList.valueOf(ContextCompat.getColor(this, colorRes))
+
+        // 2. Test State Label
+        when {
+            testResult != null -> binding.tvTestState.text = testResult
+            isBatch || isSingleTesting || isUpdating -> binding.tvTestState.text = getString(R.string.connection_test_testing)
+            else -> binding.tvTestState.text = getString(if (isRunning) R.string.connection_connected else R.string.connection_not_connected)
+        }
+
+        val isAnyTesting = isBatch || isSingleTesting || isTestingText || isStoppingText
+        val testClickable = (isRunning || isServerSelected) && !isAnyTesting && !isUpdating
+        binding.tvTestState.isEnabled = testClickable
+        binding.tvTestState.alpha = if (isRunning || isServerSelected) 1.0f else 0.6f
+
+        // 3. Stop Button
+        binding.btnStopTest.visibility = if (isBatch) View.VISIBLE else View.GONE
+        binding.btnStopTest.isEnabled = !isStoppingText
+        binding.btnStopTest.alpha = if (isStoppingText) 0.5f else 1.0f
+
+        // 4. Ping All Empty Button
+        val pingAllEnabled = !isHeavyProcess
+        binding.btnPingAllEmpty.isEnabled = pingAllEnabled
+        binding.btnPingAllEmpty.alpha = if (pingAllEnabled) 1.0f else 0.6f
+
+        invalidateOptionsMenu()
     }
 
     private inner class ServersAdapter(private val fromRecent: Boolean) : RecyclerView.Adapter<ServersAdapter.ViewHolder>() {
@@ -904,24 +938,28 @@ class MainActivity : BaseActivity() {
         }
     }
 
-    private fun applyRunningState(isRunning: Boolean) {
-        val iconRes = if (isRunning) R.drawable.ic_stop_24dp else R.drawable.ic_play_24dp
-        val colorRes = if (isRunning) R.color.color_fab_active else R.color.color_fab_inactive
-        
-        binding.fab.setIconResource(iconRes)
-        binding.fab.backgroundTintList = ColorStateList.valueOf(ContextCompat.getColor(this, colorRes))
 
-        val isTesting = mainViewModel.updateTestResultAction.value != null
-        if (!isTesting || isRunning) {
-            val testState = if (isRunning) R.string.connection_connected else R.string.connection_not_connected
-            setTestState(getString(testState))
-        }
-        updateFabAndTestState()
-    }
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
         menuInflater.inflate(R.menu.menu_main, menu)
         return true
+    }
+
+    override fun onPrepareOptionsMenu(menu: Menu): Boolean {
+        val isBatch = isBatchTesting || isPostUpdatePingInProgress
+        val isUpdating = isFetchingRemote || isSubscriptionUpdating
+        val isBlocked = isBatch || isUpdating || isSingleTesting || mainViewModel.updateTestResultAction.value == getString(R.string.connection_test_testing)
+
+        menu.findItem(R.id.all_ping)?.apply {
+            isEnabled = !isBlocked
+            icon?.alpha = if (isBlocked) 128 else 255
+        }
+        menu.findItem(R.id.sub_update)?.apply {
+            isEnabled = !isBlocked
+            icon?.alpha = if (isBlocked) 128 else 255
+        }
+
+        return super.onPrepareOptionsMenu(menu)
     }
 
     override fun onMenuOpened(featureId: Int, menu: Menu): Boolean {
@@ -939,10 +977,17 @@ class MainActivity : BaseActivity() {
         R.id.all_ping -> {
             val isPremium = isExtensionAvailable && MmkvManager.decodeSettingsBool(PREF_IS_PREMIUM_MODE, false)
             if (isPremium) {
-                if (mainViewModel.subscriptionId.isEmpty()) {
-                    mainViewModel.testAllRealPing(getPremiumServerGuids())
-                } else {
-                    mainViewModel.testAllRealPing()
+                val servers = if (mainViewModel.subscriptionId.isEmpty()) getPremiumServerGuids() else mainViewModel.serversCache.map { it.guid }
+                if (mainViewModel.subscriptionId.isNotEmpty() || servers.isNotEmpty()) {
+                    isBatchTesting = true
+                    hasSeenTestResult = false
+                    lastTestStartTime = System.currentTimeMillis()
+                    updateUIStates()
+                    if (mainViewModel.subscriptionId.isEmpty()) {
+                        mainViewModel.testAllRealPing(servers)
+                    } else {
+                        mainViewModel.testAllRealPing()
+                    }
                 }
             } else {
                 importConfigViaSub(triggerPing = true)
@@ -981,6 +1026,8 @@ class MainActivity : BaseActivity() {
 
     fun importConfigViaSub(triggerPing: Boolean = false, forceSubIds: List<String>? = null): Boolean {
         CoreServiceManager.stopVService(this)
+        isSubscriptionUpdating = true
+        updateUIStates()
         showLoading()
         lifecycleScope.launch(Dispatchers.IO) {
             val subIds = if (forceSubIds != null) {
@@ -1002,13 +1049,18 @@ class MainActivity : BaseActivity() {
             val result = mainViewModel.updateConfigViaSubAll(subIds)
             delay(500L)
             withContext(Dispatchers.Main) {
+                if (triggerPing && (result.successCount > 0 || result.configCount > 0)) {
+                    isBatchTesting = true
+                    isPostUpdatePingInProgress = true
+                    hasSeenTestResult = false
+                    lastTestStartTime = System.currentTimeMillis()
+                    MmkvManager.setSelectServer("")
+                }
+                isSubscriptionUpdating = false
+                updateUIStates()
                 hideLoading()
                 if (result.successCount > 0 || result.configCount > 0) {
                     mainViewModel.reloadServerList()
-                    if (triggerPing) {
-                        isPostUpdatePingInProgress = true
-                        MmkvManager.setSelectServer("")
-                    }
                     refreshSelectedServer()
                     toast(getString(R.string.title_update_subscription_result,  result.failureCount))
                     if (triggerPing) {
@@ -1023,8 +1075,14 @@ class MainActivity : BaseActivity() {
                         }
                     }
                 } else if (result.failureCount > 0) {
+                    isBatchTesting = false
+                    isPostUpdatePingInProgress = false
+                    updateUIStates()
                     toast(R.string.toast_failure)
                 } else {
+                    isBatchTesting = false
+                    isPostUpdatePingInProgress = false
+                    updateUIStates()
                     toast(R.string.title_update_subscription_no_subscription)
                 }
             }
