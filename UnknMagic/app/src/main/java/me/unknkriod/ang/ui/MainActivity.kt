@@ -617,6 +617,7 @@ class MainActivity : BaseActivity() {
             viewExpand.visibility = if (isSingleSub) View.GONE else View.VISIBLE
 
             viewSelect.setOnClickListener {
+                if (isBatchTesting || isPostUpdatePingInProgress) return@setOnClickListener
                 if (subId.isEmpty()) return@setOnClickListener
                 mainViewModel.subscriptionIdChanged(if (mainViewModel.subscriptionId == subId) "" else subId)
                 if (subId.isNotEmpty()) expandedSubscriptions.add(url)
@@ -715,6 +716,7 @@ class MainActivity : BaseActivity() {
         layoutContent.setPadding(p, p, p, p)
 
         itemView.setOnClickListener {
+            if (isBatchTesting || isPostUpdatePingInProgress) return@setOnClickListener
             selectionFromRecent = fromRecent
             val currentSelect = MmkvManager.getSelectServer()
             if (currentSelect == guid) {
@@ -848,6 +850,11 @@ class MainActivity : BaseActivity() {
         binding.btnPingAllEmpty.isEnabled = pingAllEnabled
         binding.btnPingAllEmpty.alpha = if (pingAllEnabled) 1.0f else 0.6f
 
+        if (isBatch) {
+            binding.cardRecent.alpha = 0.6f
+            binding.rvTopServers.alpha = 0.6f
+        }
+
         invalidateOptionsMenu()
     }
 
@@ -915,6 +922,7 @@ class MainActivity : BaseActivity() {
             layoutContent.setPadding(p, p, p, p)
 
             holder.itemView.setOnClickListener {
+                if (isBatchTesting || isPostUpdatePingInProgress) return@setOnClickListener
                 selectionFromRecent = fromRecent
                 val currentSelect = MmkvManager.getSelectServer()
                 if (currentSelect == item.guid) {
