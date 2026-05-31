@@ -68,8 +68,7 @@ class MainActivity : BaseActivity() {
         setContentViewWithToolbar(binding.root, showHomeAsUp = false, title = getString(R.string.app_name))
 
         binding.fab.setOnClickListener { handleFabAction() }
-        binding.tvTestState.setOnClickListener { handleLayoutTestClick() }
-        binding.btnStopTest.setOnClickListener { mainViewModel.stopTest() }
+        binding.layoutTestStatusContainer.setOnClickListener { handleTestStatusClick() }
         binding.rvTopServers.adapter = topServersAdapter
 
         binding.btnPingAllEmpty.setOnClickListener {
@@ -472,6 +471,20 @@ class MainActivity : BaseActivity() {
         }
     }
 
+    private fun handleTestStatusClick() {
+        val testResult = mainViewModel.updateTestResultAction.value
+        val isStoppingText = testResult == getString(R.string.connection_test_stopping)
+        val isBatch = isBatchTesting || isPostUpdatePingInProgress
+
+        if (isBatch) {
+            if (!isStoppingText) {
+                mainViewModel.stopTest()
+            }
+        } else if (!isSingleTesting) {
+            handleLayoutTestClick()
+        }
+    }
+
     private fun startV2Ray() {
         val guid = MmkvManager.getSelectServer()
         if (guid.isNullOrEmpty()) {
@@ -836,9 +849,21 @@ class MainActivity : BaseActivity() {
         }
 
         val isAnyTesting = isBatch || isSingleTesting || isTestingText || isStoppingText
-        val testClickable = (isRunning || isServerSelected) && !isAnyTesting && !isUpdating
-        binding.tvTestState.isEnabled = testClickable
-        binding.tvTestState.alpha = if (isRunning || isServerSelected) 1.0f else 0.6f
+        
+        val canStart = (isRunning || isServerSelected) && !isAnyTesting && !isUpdating
+        val canStopBatch = isBatch && !isStoppingText
+        binding.layoutTestStatusContainer.isEnabled = canStart || canStopBatch
+        
+        // Устанавливаем полную непрозрачность во время теста или если есть результат
+        binding.layoutTestStatusContainer.alpha = if (isAnyTesting || testResult != null || isRunning || isServerSelected) 1.0f else 0.6f
+
+        if (isBatch) {
+            binding.tvTestState.setBackgroundResource(R.drawable.bg_test_state_tag_top)
+            binding.tvTestState.setTextColor(ContextCompat.getColor(this, R.color.md_theme_onSurface))
+        } else {
+            binding.tvTestState.setBackgroundResource(0)
+            binding.tvTestState.setTextColor(ContextCompat.getColor(this, R.color.md_theme_onSurface))
+        }
 
         // 3. Stop Button
         binding.btnStopTest.visibility = if (isBatch) View.VISIBLE else View.GONE

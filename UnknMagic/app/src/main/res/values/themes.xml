@@ -78,4 +78,12 @@
         <item name="colorPrimary">@color/color_fab_active</item>
     </style>
 
+    <style name="ShapeAppearance.App.TagBottom" parent="ShapeAppearance.Material3.MediumComponent">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSizeTopLeft">0dp</item>
+        <item name="cornerSizeTopRight">0dp</item>
+        <item name="cornerSizeBottomLeft">20dp</item>
+        <item name="cornerSizeBottomRight">20dp</item>
+    </style>
+
 </resources>

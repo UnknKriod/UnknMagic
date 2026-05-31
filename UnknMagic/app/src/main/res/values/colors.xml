@@ -54,4 +54,7 @@
     <color name="md_theme_shadow">#000000</color>
     <color name="md_theme_surfaceTint">#000000</color>
     <color name="md_theme_scrim">#000000</color>
+
+    <!-- Custom tag colors -->
+    <color name="color_stop_red">#EF5350</color>
 </resources>

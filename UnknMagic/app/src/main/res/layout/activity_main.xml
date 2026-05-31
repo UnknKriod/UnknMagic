@@ -30,36 +30,55 @@
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintTop_toTopOf="parent" />
 
-        <TextView
-            android:id="@+id/tv_test_state"
+        <LinearLayout
+            android:id="@+id/layout_test_status_container"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
-            android:text="@string/connection_not_connected"
-            android:textSize="18sp"
-            android:textStyle="bold"
-            android:textColor="@color/md_theme_onSurface"
+            android:orientation="vertical"
             android:gravity="center"
-            android:padding="8dp"
-            android:background="?attr/selectableItemBackground"
             android:clickable="true"
             android:focusable="true"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintTop_toBottomOf="@id/fab"
-            tools:text="Not Connected" />
+            app:layout_constraintTop_toBottomOf="@id/fab">
 
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btn_stop_test"
-            style="@style/Widget.Material3.Button.TextButton"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/action_stop_test"
-            android:visibility="gone"
-            android:textColor="@color/color_fab_inactive"
-            app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toBottomOf="@id/tv_test_state" />
+            <TextView
+                android:id="@+id/tv_test_state"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:minWidth="160dp"
+                android:text="@string/connection_not_connected"
+                android:textSize="18sp"
+                android:textStyle="bold"
+                android:textColor="@color/md_theme_onSurface"
+                android:gravity="center"
+                android:paddingHorizontal="32dp"
+                android:paddingVertical="16dp"
+                android:background="@null"
+                android:clickable="false"
+                android:focusable="false"
+                tools:text="Not Connected" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btn_stop_test"
+                style="@style/Widget.Material3.Button.UnelevatedButton"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="-2dp"
+                android:text="@string/action_stop_test"
+                android:visibility="gone"
+                android:textColor="@android:color/white"
+                android:textSize="16sp"
+                android:insetTop="0dp"
+                android:insetBottom="0dp"
+                android:paddingVertical="6dp"
+                android:minHeight="0dp"
+                android:clickable="false"
+                android:focusable="false"
+                app:backgroundTint="@color/color_stop_red"
+                app:shapeAppearanceOverlay="@style/ShapeAppearance.App.TagBottom" />
+        </LinearLayout>
 
         <com.google.android.material.tabs.TabLayout
             android:id="@+id/tab_mode"
@@ -78,7 +97,7 @@
             app:tabPaddingEnd="16dp"
             app:tabMinWidth="100dp"
             app:tabGravity="center"
-            app:layout_constraintTop_toBottomOf="@id/btn_stop_test"
+            app:layout_constraintTop_toBottomOf="@id/layout_test_status_container"
             app:layout_constraintStart_toStartOf="parent"
             app:layout_constraintEnd_toEndOf="parent">
 
