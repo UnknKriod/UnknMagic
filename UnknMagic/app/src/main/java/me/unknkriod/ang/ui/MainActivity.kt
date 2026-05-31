@@ -844,7 +844,8 @@ class MainActivity : BaseActivity() {
         // 2. Test State Label
         when {
             testResult != null -> binding.tvTestState.text = testResult
-            isBatch || isSingleTesting || isUpdating -> binding.tvTestState.text = getString(R.string.connection_test_testing)
+            isUpdating -> binding.tvTestState.text = getString(R.string.connection_updating_subscription)
+            isBatch || isSingleTesting -> binding.tvTestState.text = getString(R.string.connection_test_testing)
             else -> binding.tvTestState.text = getString(if (isRunning) R.string.connection_connected else R.string.connection_not_connected)
         }
 
@@ -1058,9 +1059,16 @@ class MainActivity : BaseActivity() {
     }
 
     fun importConfigViaSub(triggerPing: Boolean = false, forceSubIds: List<String>? = null): Boolean {
+        mainViewModel.stopTest()
         CoreServiceManager.stopVService(this)
         isSubscriptionUpdating = true
+        isBatchTesting = false
+        isSingleTesting = false
+        isPostUpdatePingInProgress = false
+        MmkvManager.setSelectServer("")
+        mainViewModel.updateTestResultAction.value = null
         updateUIStates()
+        refreshSelectedServer()
         showLoading()
         lifecycleScope.launch(Dispatchers.IO) {
             val subIds = if (forceSubIds != null) {
@@ -1094,6 +1102,7 @@ class MainActivity : BaseActivity() {
                 hideLoading()
                 if (result.successCount > 0 || result.configCount > 0) {
                     mainViewModel.reloadServerList()
+                    MmkvManager.setSelectServer("") // Гарантируем сброс выбора после обновления
                     refreshSelectedServer()
                     toast(getString(R.string.title_update_subscription_result,  result.failureCount))
                     if (triggerPing) {
