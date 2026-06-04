@@ -44,6 +44,8 @@ class CheckUpdateActivity : BaseActivity() {
     }
 
     private fun checkForUpdates(includePreRelease: Boolean) {
+        if (isLoadingVisible()) return
+
         toast(R.string.update_checking_for_update)
         showLoading()
 
@@ -62,18 +64,5 @@ class CheckUpdateActivity : BaseActivity() {
                 hideLoading()
             }
         }
-    }
-
-    private fun showUpdateDialog(result: CheckUpdateResult) {
-        AlertDialog.Builder(this)
-            .setTitle(getString(R.string.update_new_version_found, result.latestVersion))
-            .setMessage(result.releaseNotes)
-            .setPositiveButton(R.string.update_now) { _, _ ->
-                result.downloadUrl?.let {
-                    Utils.openUri(this, it)
-                }
-            }
-            .setNegativeButton(android.R.string.cancel, null)
-            .show()
     }
 }

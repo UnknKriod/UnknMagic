@@ -3,6 +3,7 @@ package me.unknkriod.ang.handler
 import android.os.Build
 import me.unknkriod.ang.BuildConfig
 import me.unknkriod.ang.AppConfig
+import me.unknkriod.ang.core.CoreServiceManager
 import me.unknkriod.ang.dto.CheckUpdateResult
 import me.unknkriod.ang.dto.GitHubRelease
 import me.unknkriod.ang.util.HttpUtil
@@ -19,21 +20,28 @@ object UpdateCheckerManager {
         val proxyPassword = SettingsManager.getSocksPassword()
 
         var response = HttpUtil.getUrlContent(url, 5000)
-        if (response.isNullOrEmpty()) {
+        if (response.isNullOrEmpty() && CoreServiceManager.isRunning()) {
             val httpPort = SettingsManager.getHttpPort()
             response = HttpUtil.getUrlContent(url, 5000, httpPort, proxyUsername, proxyPassword)
-                ?: throw IllegalStateException("Failed to get response")
+        }
+
+        if (response.isNullOrEmpty()) {
+            throw IllegalStateException("Failed to get response from $url")
         }
 
         val allReleases = JsonUtil.fromJson(response, Array<GitHubRelease>::class.java)
-            ?: throw IllegalStateException("Failed to parse releases")
+            ?: throw IllegalStateException("Failed to parse releases from response")
+
+        LogUtil.i(AppConfig.TAG, "Fetched ${allReleases.size} releases")
 
         // Определяем тег для поиска в названии релиза
         val flavorTag = if (BuildConfig.FLAVOR == "free") "-free" else "-premium"
 
         // Находим последний подходящий релиз
         val latestRelease = allReleases.firstOrNull { release ->
-            val matchesFlavor = release.tagName.contains(flavorTag, ignoreCase = true) || 
+            val isGitHub = url.contains("github.com")
+            val matchesFlavor = !isGitHub || 
+                               release.tagName.contains(flavorTag, ignoreCase = true) ||
                                release.body.contains(flavorTag, ignoreCase = true)
             
             if (includePreRelease) {
@@ -44,6 +52,7 @@ object UpdateCheckerManager {
         }
 
         if (latestRelease == null) {
+            LogUtil.w(AppConfig.TAG, "No releases found matching flavor tag: $flavorTag")
             return@withContext CheckUpdateResult(hasUpdate = false)
         }
 

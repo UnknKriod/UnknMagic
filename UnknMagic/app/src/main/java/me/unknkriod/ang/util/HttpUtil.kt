@@ -118,7 +118,7 @@ object HttpUtil {
         val requestBuilder = Request.Builder()
             .url(url)
             .get()
-            .header("Connection", "close")
+            .header("User-Agent", "Unknown Magic/${BuildConfig.VERSION_NAME}")
         if (httpPort != 0 && !proxyUsername.isNullOrBlank() && !proxyPassword.isNullOrBlank()) {
             requestBuilder.header("Proxy-Authorization", Credentials.basic(proxyUsername, proxyPassword))
         }
@@ -169,8 +169,7 @@ object HttpUtil {
             val requestBuilder = Request.Builder()
                 .url(currentUrl)
                 .get()
-                .header("User-agent", finalUserAgent)
-                .header("Connection", "close")
+                .header("User-Agent", finalUserAgent)
 
             applyEmbeddedBasicAuthHeader(currentUrl, requestBuilder)
 
@@ -281,7 +280,7 @@ object HttpUtil {
         val requestBuilder = Request.Builder()
             .url(url)
             .get()
-            .header("Connection", "close")
+            .header("User-Agent", "Unknown Magic/${BuildConfig.VERSION_NAME}")
         if (httpPort != 0 && !proxyUsername.isNullOrBlank() && !proxyPassword.isNullOrBlank()) {
             requestBuilder.header("Proxy-Authorization", Credentials.basic(proxyUsername, proxyPassword))
         }

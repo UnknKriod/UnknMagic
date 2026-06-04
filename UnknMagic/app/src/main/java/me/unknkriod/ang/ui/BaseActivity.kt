@@ -2,11 +2,15 @@ package me.unknkriod.ang.ui
 
 import android.content.Context
 import android.os.Bundle
+import android.text.Html
+import android.text.method.LinkMovementMethod
 import android.view.LayoutInflater
 import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
+import android.widget.TextView
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.Toolbar
 import androidx.core.content.ContextCompat
@@ -16,6 +20,7 @@ import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.progressindicator.LinearProgressIndicator
 import me.unknkriod.ang.R
+import me.unknkriod.ang.dto.CheckUpdateResult
 import me.unknkriod.ang.handler.SettingsManager
 import me.unknkriod.ang.helper.CustomDividerItemDecoration
 import me.unknkriod.ang.util.MyContextWrapper
@@ -203,6 +208,40 @@ abstract class BaseActivity : AppCompatActivity() {
         runOnUiThread {
             progressBar?.visibility = View.GONE
         }
+    }
+
+    /**
+     * Show update dialog with release notes.
+     */
+    protected fun showUpdateDialog(result: CheckUpdateResult) {
+        if (isFinishing || isDestroyed) return
+
+        val message = formatReleaseNotes(result.releaseNotes)
+
+        val dialog = AlertDialog.Builder(this)
+            .setTitle(getString(R.string.update_new_version_found, result.latestVersion))
+            .setMessage(Html.fromHtml(message, Html.FROM_HTML_MODE_LEGACY))
+            .setPositiveButton(R.string.update_now) { _, _ ->
+                result.downloadUrl?.let {
+                    Utils.openUri(this, it)
+                }
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+
+        dialog.findViewById<TextView>(android.R.id.message)?.movementMethod = LinkMovementMethod.getInstance()
+    }
+
+    private fun formatReleaseNotes(notes: String?): String {
+        if (notes == null) return ""
+        return notes.replace(Regex("^#+\\s+(.*)$", RegexOption.MULTILINE), "<b>$1</b>")
+            .replace(Regex("^\\s*-\\s+(.*)$", RegexOption.MULTILINE), "• $1")
+            .replace(Regex("\\*\\*(.*?)\\*\\*"), "<b>$1</b>")
+            .replace(Regex("__(.*?)__"), "<b>$1</b>")
+            .replace(Regex("\\*([^\\*\\s][^\\*]*[^\\*\\s])\\*"), "<i>$1</i>")
+            .replace(Regex("_([^\\s_][^_]*[^\\s_])_"), "<i>$1</i>")
+            .replace(Regex("\\[([^\\]]+)\\]\\(([^)]+)\\)"), "<a href=\"$2\">$1</a>")
+            .replace("\n", "<br/>")
     }
 
     /**

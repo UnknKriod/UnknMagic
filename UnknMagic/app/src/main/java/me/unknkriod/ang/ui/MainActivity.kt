@@ -58,6 +58,7 @@ class MainActivity : BaseActivity() {
     private var isPostUpdatePingInProgress = false
     private var hasSeenTestResult = false
     private var lastTestStartTime = 0L
+    private var isLicenseAuthInProgress = false
 
     private val licenseBridge by lazy { LicenseProvider.get() }
     private val isExtensionAvailable get() = licenseBridge.isExtensionAvailable
@@ -119,6 +120,7 @@ class MainActivity : BaseActivity() {
                     if (!isValid) {
                         try {
                             licenseBridge.getLicenseActivityIntent(this@MainActivity)?.let {
+                                isLicenseAuthInProgress = true
                                 requestLicenseAuth.launch(it)
                             }
                         } catch (e: Exception) {
@@ -169,14 +171,26 @@ class MainActivity : BaseActivity() {
     private fun autoCheckForUpdates() {
         val lastCheck = MmkvManager.decodeSettingsLong(PREF_LAST_UPDATE_CHECK, 0L)
         val now = System.currentTimeMillis()
-        
+
         if (now - lastCheck >= TimeUnit.DAYS.toMillis(1)) {
             lifecycleScope.launch(Dispatchers.IO) {
+                delay(2000)
+
+                var retryCount = 0
+                while (isLicenseAuthInProgress && retryCount < 30) {
+                    delay(1000)
+                    retryCount++
+                }
+
+                delay(AUTO_UPDATE_CHECK_DELAY)
+
                 try {
                     val result = UpdateCheckerManager.checkForUpdate()
                     if (result.hasUpdate) {
                         withContext(Dispatchers.Main) {
-                            startActivity(Intent(this@MainActivity, CheckUpdateActivity::class.java))
+                            if (!isFinishing && !isDestroyed && !isLicenseAuthInProgress) {
+                                showUpdateDialog(result)
+                            }
                         }
                     }
                     MmkvManager.encodeSettings(PREF_LAST_UPDATE_CHECK, now)
@@ -809,6 +823,7 @@ class MainActivity : BaseActivity() {
         private const val PREF_PREMIUM_SUB_ID = "premium_sub_id"
         private const val PREF_PREMIUM_SUBS_LIST = "premium_subs_list"
         private const val PREF_LAST_UPDATE_CHECK = "last_update_check_time"
+        private const val AUTO_UPDATE_CHECK_DELAY = 5000L
     }
 
     private fun updateUIStates() {
@@ -1051,6 +1066,10 @@ class MainActivity : BaseActivity() {
             startActivity(Intent(this, LogcatActivity::class.java))
             true
         }
+        R.id.check_update -> {
+            startActivity(Intent(this, CheckUpdateActivity::class.java))
+            true
+        }
         R.id.settings -> {
             startActivity(Intent(this, SettingsActivity::class.java))
             true
@@ -1133,6 +1152,7 @@ class MainActivity : BaseActivity() {
     }
 
     private val requestLicenseAuth = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+        isLicenseAuthInProgress = false
         checkLicenseAuth()
     }
 

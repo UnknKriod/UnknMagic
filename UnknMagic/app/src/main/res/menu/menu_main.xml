@@ -32,6 +32,11 @@
         android:icon="@drawable/ic_logcat_24dp"
         app:showAsAction="never" />
     <item
+        android:id="@+id/check_update"
+        android:title="@string/update_check_for_update"
+        android:icon="@drawable/ic_cloud_download_24dp"
+        app:showAsAction="never" />
+    <item
         android:id="@+id/settings"
         android:title="@string/title_settings"
         android:icon="@drawable/ic_settings_24dp"
