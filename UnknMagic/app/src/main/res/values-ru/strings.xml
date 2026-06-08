@@ -12,6 +12,8 @@
 
     <!-- Notifications -->
     <string name="notification_action_stop_v2ray">Остановить</string>
+    <string name="notification_action_pause_v2ray">Пауза</string>
+    <string name="notification_action_resume_v2ray">Возобновить</string>
     <string name="toast_permission_denied">Разрешение не получено</string>
     <string name="toast_permission_denied_notification">Разрешение на отображение уведомлений не получено</string>
     <string name="notification_action_more">Ещё…</string>
@@ -364,6 +366,7 @@
     <string name="connection_test_error_status_code">Код ошибки: #%d</string>
     <string name="connection_connected">Соединено, нажмите для проверки</string>
     <string name="connection_not_connected">Нет соединения</string>
+    <string name="connection_paused">На паузе</string>
     <string name="connection_runing_task_left">Проверено: %s</string>
     <string name="connection_test_stopping">Остановка…</string>
     <string name="action_stop_test">Остановить проверку</string>

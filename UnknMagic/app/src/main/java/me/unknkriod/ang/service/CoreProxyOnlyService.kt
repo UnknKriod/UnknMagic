@@ -20,6 +20,7 @@ class CoreProxyOnlyService : Service(), ServiceControl {
         super.onCreate()
         LogUtil.i(AppConfig.TAG, "StartCore-Proxy: Service created")
         CoreServiceManager.serviceControl = SoftReference(this)
+        CoreServiceManager.registerServiceReceiver(this)
     }
 
     /**
@@ -40,6 +41,7 @@ class CoreProxyOnlyService : Service(), ServiceControl {
      */
     override fun onDestroy() {
         super.onDestroy()
+        CoreServiceManager.unregisterServiceReceiver(this)
         CoreServiceManager.stopCoreLoop()
     }
 
@@ -63,6 +65,14 @@ class CoreProxyOnlyService : Service(), ServiceControl {
      */
     override fun stopService() {
         stopSelf()
+    }
+
+    override fun pauseService() {
+        CoreServiceManager.stopCoreLoop(false)
+    }
+
+    override fun resumeService() {
+        CoreServiceManager.startCoreLoop(null)
     }
 
     /**

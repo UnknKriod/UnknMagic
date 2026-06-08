@@ -31,6 +31,8 @@ object NotificationManager {
     private const val NOTIFICATION_PENDING_INTENT_CONTENT = 0
     private const val NOTIFICATION_PENDING_INTENT_STOP_V2RAY = 1
     private const val NOTIFICATION_PENDING_INTENT_RESTART_V2RAY = 2
+    private const val NOTIFICATION_PENDING_INTENT_PAUSE_V2RAY = 3
+    private const val NOTIFICATION_PENDING_INTENT_RESUME_V2RAY = 4
     private const val QUERY_INTERVAL_MS = 2000L // Slightly faster but still efficient
 
     private var lastQueryTime = 0L
@@ -42,6 +44,8 @@ object NotificationManager {
     private var cachedContentIntent: PendingIntent? = null
     private var cachedStopIntent: PendingIntent? = null
     private var cachedRestartIntent: PendingIntent? = null
+    private var cachedPauseIntent: PendingIntent? = null
+    private var cachedResumeIntent: PendingIntent? = null
     private var builder: NotificationCompat.Builder? = null
     
     private val speedStringBuilder = StringBuilder()
@@ -122,15 +126,33 @@ object NotificationManager {
         }
         currentChannelId = channelId
 
+        val isPaused = CoreServiceManager.isPaused()
         val notificationBuilder = NotificationCompat.Builder(service, channelId)
             .setSmallIcon(R.drawable.ic_stat_notification)
             .setContentTitle(currentRemarks)
+            .setContentText(if (isPaused) service.getString(R.string.connection_paused) else null)
             .setPriority(NotificationCompat.PRIORITY_LOW) // Changed from MIN to LOW for better visibility
             .setOngoing(true)
             .setShowWhen(false)
             .setOnlyAlertOnce(true)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .setContentIntent(cachedContentIntent)
+
+        if (CoreServiceManager.isPaused()) {
+            notificationBuilder.addAction(
+                R.drawable.ic_play_24dp,
+                service.getString(R.string.notification_action_resume_v2ray),
+                cachedResumeIntent
+            )
+        } else {
+            notificationBuilder.addAction(
+                android.R.drawable.ic_media_pause,
+                service.getString(R.string.notification_action_pause_v2ray),
+                cachedPauseIntent
+            )
+        }
+
+        notificationBuilder
             .addAction(R.drawable.ic_stop_24dp, service.getString(R.string.notification_action_stop_v2ray), cachedStopIntent)
             .addAction(R.drawable.ic_refresh_24dp, service.getString(R.string.title_service_restart), cachedRestartIntent)
         
@@ -159,6 +181,18 @@ object NotificationManager {
             putExtra("key", AppConfig.MSG_STATE_RESTART)
         }
         cachedRestartIntent = PendingIntent.getBroadcast(context, NOTIFICATION_PENDING_INTENT_RESTART_V2RAY, restartV2RayIntent, flags)
+
+        val pauseV2RayIntent = Intent(AppConfig.BROADCAST_ACTION_SERVICE).apply {
+            `package` = AppConfig.ANG_PACKAGE
+            putExtra("key", AppConfig.MSG_STATE_PAUSE)
+        }
+        cachedPauseIntent = PendingIntent.getBroadcast(context, NOTIFICATION_PENDING_INTENT_PAUSE_V2RAY, pauseV2RayIntent, flags)
+
+        val resumeV2RayIntent = Intent(AppConfig.BROADCAST_ACTION_SERVICE).apply {
+            `package` = AppConfig.ANG_PACKAGE
+            putExtra("key", AppConfig.MSG_STATE_RESUME)
+        }
+        cachedResumeIntent = PendingIntent.getBroadcast(context, NOTIFICATION_PENDING_INTENT_RESUME_V2RAY, resumeV2RayIntent, flags)
     }
 
     /**

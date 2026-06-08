@@ -20,6 +20,16 @@ interface ServiceControl {
     fun stopService()
 
     /**
+     * Pauses the service.
+     */
+    fun pauseService()
+
+    /**
+     * Resumes the service.
+     */
+    fun resumeService()
+
+    /**
      * Protects the VPN socket.
      * @param socket The socket to protect.
      * @return True if the socket is protected, false otherwise.

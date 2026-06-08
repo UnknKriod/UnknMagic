@@ -37,6 +37,7 @@ import me.unknkriod.ang.AppConfig
 import me.unknkriod.ang.dto.SubscriptionItem
 import me.unknkriod.ang.dto.ProfileItem
 import me.unknkriod.ang.util.LicenseProvider
+import me.unknkriod.ang.util.MessageUtil
 import me.unknkriod.ang.util.RemoteSubscription
 
 import me.unknkriod.ang.handler.UpdateCheckerManager
@@ -374,6 +375,9 @@ class MainActivity : BaseActivity() {
         mainViewModel.isRunning.observe(this) {
             updateUIStates()
         }
+        mainViewModel.isPaused.observe(this) {
+            updateUIStates()
+        }
         mainViewModel.updateTestResultAction.observe(this) { result ->
             val testingText = getString(R.string.connection_test_testing)
             val now = System.currentTimeMillis()
@@ -421,6 +425,10 @@ class MainActivity : BaseActivity() {
     }
 
     private fun handleFabAction() {
+        if (mainViewModel.isPaused.value == true) {
+            MessageUtil.sendMsg2Service(this, AppConfig.MSG_STATE_RESUME, "")
+            return
+        }
         if (mainViewModel.isRunning.value == true) {
             CoreServiceManager.stopVService(this)
         } else {
@@ -828,6 +836,7 @@ class MainActivity : BaseActivity() {
 
     private fun updateUIStates() {
         val isRunning = mainViewModel.isRunning.value == true
+        val isPaused = mainViewModel.isPaused.value == true
         val testResult = mainViewModel.updateTestResultAction.value
 
         val isBatch = isBatchTesting || isPostUpdatePingInProgress
@@ -837,7 +846,7 @@ class MainActivity : BaseActivity() {
 
         val isHeavyProcess = isBatch || isUpdating
 
-        // 1. FAB (Stop/Play)
+        // 1. FAB (Stop/Play/Resume)
         val currentGuid = MmkvManager.getSelectServer()
         val isPremiumMode = isExtensionAvailable && MmkvManager.decodeSettingsBool(PREF_IS_PREMIUM_MODE, false)
         val isServerSelected = if (currentGuid.isNullOrEmpty()) {
@@ -847,17 +856,34 @@ class MainActivity : BaseActivity() {
             profile != null && (getPremiumSubIds().contains(profile.subscriptionId) == isPremiumMode)
         }
 
-        val fabEnabled = (isRunning || isServerSelected) && !isHeavyProcess
+        val fabEnabled = (isRunning || isPaused || isServerSelected) && !isHeavyProcess
         binding.fab.isEnabled = fabEnabled
         binding.fab.alpha = if (fabEnabled) 1.0f else 0.6f
 
-        val iconRes = if (isRunning) R.drawable.ic_stop_24dp else R.drawable.ic_play_24dp
-        val colorRes = if (isRunning) R.color.color_fab_active else R.color.color_fab_inactive
+        val iconRes = when {
+            isPaused -> android.R.drawable.ic_media_pause
+            isRunning -> R.drawable.ic_stop_24dp
+            else -> R.drawable.ic_play_24dp
+        }
+        
+        val fabColor = when {
+            isPaused -> R.color.colorWhite
+            isRunning -> R.color.color_fab_active
+            else -> R.color.color_fab_inactive
+        }
+
         binding.fab.setIconResource(iconRes)
-        binding.fab.backgroundTintList = ColorStateList.valueOf(ContextCompat.getColor(this, colorRes))
+        binding.fab.backgroundTintList = ColorStateList.valueOf(ContextCompat.getColor(this, fabColor))
+        
+        if (isPaused) {
+            binding.fab.iconTint = ColorStateList.valueOf(ContextCompat.getColor(this, R.color.color_fab_active))
+        } else {
+            binding.fab.iconTint = ColorStateList.valueOf(ContextCompat.getColor(this, R.color.colorWhite))
+        }
 
         // 2. Test State Label
         when {
+            isPaused -> binding.tvTestState.text = getString(R.string.connection_paused)
             testResult != null -> binding.tvTestState.text = testResult
             isUpdating -> binding.tvTestState.text = getString(R.string.connection_updating_subscription)
             isBatch || isSingleTesting -> binding.tvTestState.text = getString(R.string.connection_test_testing)

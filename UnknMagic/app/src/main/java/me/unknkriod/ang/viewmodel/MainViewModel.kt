@@ -42,6 +42,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     var keywordFilter = ""
     val serversCache = mutableListOf<ServersCache>()
     val isRunning by lazy { MutableLiveData<Boolean>() }
+    val isPaused by lazy { MutableLiveData<Boolean>() }
     val updateListAction by lazy { MutableLiveData<Int>() }
     val updateTestResultAction by lazy { MutableLiveData<String>() }
     private val tcpingTestScope by lazy { CoroutineScope(Dispatchers.IO) }
@@ -53,6 +54,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
      */
     fun startListenBroadcast() {
         isRunning.value = false
+        isPaused.value = false
         val mFilter = IntentFilter(AppConfig.BROADCAST_ACTION_ACTIVITY)
         ContextCompat.registerReceiver(getApplication(), mMsgReceiver, mFilter, Utils.receiverFlags())
         MessageUtil.sendMsg2Service(getApplication(), AppConfig.MSG_REGISTER_CLIENT, "")
@@ -478,6 +480,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
                 AppConfig.MSG_STATE_STOP_SUCCESS -> {
                     if (isRunning.value != false) isRunning.value = false
+                    if (isPaused.value != false) isPaused.value = false
+                }
+
+                AppConfig.MSG_STATE_PAUSE -> {
+                    isPaused.value = true
+                }
+
+                AppConfig.MSG_STATE_RESUME -> {
+                    isPaused.value = false
                 }
 
                 AppConfig.MSG_MEASURE_DELAY_SUCCESS -> {

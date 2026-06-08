@@ -50,6 +50,8 @@ object CoreServiceManager {
     private var currentConfig: ProfileItem? = null
     private var processFinder: XrayProcessFinder? = null
     private var browserDialer: IDialerService? = null
+    private var vpnInterface: ParcelFileDescriptor? = null
+    private var isPaused = false
 
     var serviceControl: SoftReference<ServiceControl>? = null
         set(value) {
@@ -118,6 +120,24 @@ object CoreServiceManager {
      * @return True if the service is running, false otherwise.
      */
     fun isRunning() = coreController.isRunning
+
+    fun isPaused() = isPaused
+
+    fun registerServiceReceiver(service: Service) {
+        val mFilter = IntentFilter(AppConfig.BROADCAST_ACTION_SERVICE)
+        mFilter.addAction(Intent.ACTION_SCREEN_ON)
+        mFilter.addAction(Intent.ACTION_SCREEN_OFF)
+        mFilter.addAction(Intent.ACTION_USER_PRESENT)
+        ContextCompat.registerReceiver(service, mMsgReceive, mFilter, Utils.receiverFlags())
+    }
+
+    fun unregisterServiceReceiver(service: Service) {
+        try {
+            service.unregisterReceiver(mMsgReceive)
+        } catch (e: Exception) {
+            LogUtil.e(AppConfig.TAG, "StartCore-Manager: Failed to unregister receiver", e)
+        }
+    }
 
     /**
      * Gets the name of the currently running server.
@@ -193,6 +213,8 @@ object CoreServiceManager {
      * Starts the V2Ray core service.
      */
     fun startCoreLoop(vpnInterface: ParcelFileDescriptor?): Boolean {
+        this.vpnInterface = vpnInterface
+        isPaused = false
         if (coreController.isRunning) {
             LogUtil.w(AppConfig.TAG, "StartCore-Manager: Core already running")
             return false
@@ -227,12 +249,6 @@ object CoreServiceManager {
         if (!result.status) {
             error(result.errorMessage.ifBlank { "Failed to get V2Ray config" })
         }
-
-        val mFilter = IntentFilter(AppConfig.BROADCAST_ACTION_SERVICE)
-        mFilter.addAction(Intent.ACTION_SCREEN_ON)
-        mFilter.addAction(Intent.ACTION_SCREEN_OFF)
-        mFilter.addAction(Intent.ACTION_USER_PRESENT)
-        ContextCompat.registerReceiver(service, mMsgReceive, mFilter, Utils.receiverFlags())
 
         currentConfig = config
         var tunFd = vpnInterface?.fd ?: 0
@@ -275,7 +291,7 @@ object CoreServiceManager {
      * Unregisters broadcast receivers, stops notifications, and shuts down plugins.
      * @return True if the core was stopped successfully, false otherwise.
      */
-    fun stopCoreLoop(): Boolean {
+    fun stopCoreLoop(cancelNotification: Boolean = true): Boolean {
         val service = getService() ?: return false
 
         if (coreController.isRunning) {
@@ -296,12 +312,10 @@ object CoreServiceManager {
         }
 
         MessageUtil.sendMsg2UI(service, AppConfig.MSG_STATE_STOP_SUCCESS, "")
-        NotificationManager.cancelNotification()
-
-        try {
-            service.unregisterReceiver(mMsgReceive)
-        } catch (e: Exception) {
-            LogUtil.e(AppConfig.TAG, "StartCore-Manager: Failed to unregister receiver", e)
+        if (cancelNotification) {
+            NotificationManager.cancelNotification()
+        } else {
+            NotificationManager.stopSpeedNotification(currentConfig)
         }
 
         return true
@@ -490,6 +504,21 @@ object CoreServiceManager {
                     serviceControl.stopService()
                     Thread.sleep(500L)
                     startVService(serviceControl.getService())
+                }
+
+                AppConfig.MSG_STATE_PAUSE -> {
+                    LogUtil.i(AppConfig.TAG, "StartCore-Manager: Pause service")
+                    isPaused = true
+                    serviceControl.pauseService()
+                    NotificationManager.showNotification(currentConfig)
+                    MessageUtil.sendMsg2UI(serviceControl.getService(), AppConfig.MSG_STATE_PAUSE, "")
+                }
+
+                AppConfig.MSG_STATE_RESUME -> {
+                    LogUtil.i(AppConfig.TAG, "StartCore-Manager: Resume service")
+                    isPaused = false
+                    serviceControl.resumeService()
+                    MessageUtil.sendMsg2UI(serviceControl.getService(), AppConfig.MSG_STATE_RESUME, "")
                 }
 
                 AppConfig.MSG_MEASURE_DELAY -> {

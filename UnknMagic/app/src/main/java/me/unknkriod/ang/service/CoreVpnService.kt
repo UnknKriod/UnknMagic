@@ -15,8 +15,10 @@ import android.os.Build
 import android.os.ParcelFileDescriptor
 import android.os.StrictMode
 import androidx.annotation.RequiresApi
+import androidx.core.app.NotificationCompat
 import me.unknkriod.ang.AppConfig
 import me.unknkriod.ang.BuildConfig
+import me.unknkriod.ang.R
 import me.unknkriod.ang.contracts.ServiceControl
 import me.unknkriod.ang.contracts.Tun2SocksControl
 import me.unknkriod.ang.core.CoreServiceManager
@@ -78,6 +80,7 @@ class CoreVpnService : VpnService(), ServiceControl {
         val policy = StrictMode.ThreadPolicy.Builder().permitAll().build()
         StrictMode.setThreadPolicy(policy)
         CoreServiceManager.serviceControl = SoftReference(this)
+        CoreServiceManager.registerServiceReceiver(this)
     }
 
     override fun onRevoke() {
@@ -93,6 +96,8 @@ class CoreVpnService : VpnService(), ServiceControl {
     override fun onDestroy() {
         super.onDestroy()
         LogUtil.i(AppConfig.TAG, "StartCore-VPN: Service destroyed")
+
+        CoreServiceManager.unregisterServiceReceiver(this)
 
         // Ensure VPN interface is properly closed when the service is destroyed without
         // going through stopAllService() (e.g. when killed unexpectedly). isRunning is
@@ -138,6 +143,22 @@ class CoreVpnService : VpnService(), ServiceControl {
 
     override fun stopService() {
         stopAllService(true)
+    }
+
+    override fun pauseService() {
+        stopAllService(false)
+        try {
+            if (::mInterface.isInitialized) {
+                mInterface.close()
+            }
+        } catch (e: Exception) {
+            LogUtil.e(AppConfig.TAG, "StartCore-VPN: Failed to close interface on pause", e)
+        }
+    }
+
+    override fun resumeService() {
+        setupVpnService()
+        startService()
     }
 
     override fun vpnProtect(socket: Int): Boolean {
@@ -346,10 +367,6 @@ class CoreVpnService : VpnService(), ServiceControl {
     }
 
     private fun stopAllService(isForced: Boolean = true) {
-//        val configName = defaultDPreference.getPrefString(PREF_CURR_CONFIG_GUID, "")
-//        val emptyInfo = VpnNetworkInfo()
-//        val info = loadVpnNetworkInfo(configName, emptyInfo)!! + (lastNetworkInfo ?: emptyInfo)
-//        saveVpnNetworkInfo(configName, info)
         isRunning = false
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             try {
@@ -362,7 +379,7 @@ class CoreVpnService : VpnService(), ServiceControl {
         tun2SocksService?.stopTun2Socks()
         tun2SocksService = null
 
-        CoreServiceManager.stopCoreLoop()
+        CoreServiceManager.stopCoreLoop(isForced)
 
         if (isForced) {
             //stopSelf has to be called ahead of mInterface.close(). otherwise v2ray core cannot be stooped
