@@ -430,6 +430,9 @@ class MainActivity : BaseActivity() {
                 if ((isBatchTesting || isPostUpdatePingInProgress) && !hasSeenTestResult && (now - lastTestStartTime < 1000)) {
                     return@observe
                 }
+                if (isPostUpdatePingInProgress && MmkvManager.decodeSettingsBool(MmkvManager.KEY_AUTO_MODE, false)) {
+                    switchToNextBestServer(forceBest = true)
+                }
                 isBatchTesting = false
                 isSingleTesting = false
                 isPostUpdatePingInProgress = false
@@ -1039,7 +1042,7 @@ class MainActivity : BaseActivity() {
         }
     }
 
-    private fun switchToNextBestServer(forceBest: Boolean = false) {
+    private fun switchToNextBestServer(forceBest: Boolean = false, forceReconnect: Boolean? = null) {
         lifecycleScope.launch(Dispatchers.Default) {
             val allServers = MmkvManager.decodeAllServerList().mapNotNull { guid ->
                 val profile = MmkvManager.decodeServerConfig(guid)
@@ -1059,7 +1062,9 @@ class MainActivity : BaseActivity() {
             }
 
             val nextServer = if (forceBest) {
-                sortedServers.firstOrNull()
+                val candidate = sortedServers.firstOrNull()
+                val candidateDelay = candidate?.let { MmkvManager.decodeServerAffiliationInfo(it.first)?.testDelayMillis } ?: 0L
+                if (candidateDelay > 0) candidate else null
             } else {
                 val currentIdx = sortedServers.indexOfFirst { it.first == currentGuid }
                 if (currentIdx != -1) {
@@ -1075,22 +1080,31 @@ class MainActivity : BaseActivity() {
                 }
             }
 
-            if (nextServer != null && (nextServer.first != currentGuid || forceBest)) {
-                withContext(Dispatchers.Main) {
-                    if (nextServer.first != currentGuid) {
-                        toast(getString(R.string.auto_mode_switching))
-                        MmkvManager.setSelectServer(nextServer.first)
-                        
-                        // Reset manual results and UI on server change
-                        diagnosticResults.clear()
-                        diagnosticLoading.clear()
-                        DiagnosticsManager.getServices(this@MainActivity).forEach {
-                            updateDiagnosticView(it.id)
-                        }
-                        binding.btnAutoSwitchServer.visibility = View.GONE
+            if (nextServer != null) {
+                val isNewServer = nextServer.first != currentGuid
+                if (isNewServer || forceBest) {
+                    withContext(Dispatchers.Main) {
+                        if (isNewServer) {
+                            MmkvManager.setSelectServer(nextServer.first)
+                            
+                            // Reset manual results and UI on server change
+                            diagnosticResults.clear()
+                            diagnosticLoading.clear()
+                            DiagnosticsManager.getServices(this@MainActivity).forEach {
+                                updateDiagnosticView(it.id)
+                            }
+                            binding.btnAutoSwitchServer.visibility = View.GONE
 
-                        refreshSelectedServer()
-                        restartV2Ray()
+                            refreshSelectedServer()
+                        }
+                        
+                        val shouldReconnect = forceReconnect ?: (mainViewModel.isRunning.value == true)
+                        if (shouldReconnect) {
+                            if (isNewServer) {
+                                toast(getString(R.string.auto_mode_switching))
+                            }
+                            restartV2Ray()
+                        }
                     }
                 }
             }
@@ -1152,11 +1166,11 @@ class MainActivity : BaseActivity() {
         // 1. FAB (Stop/Play/Resume)
         val currentGuid = MmkvManager.getSelectServer()
         val isPremiumMode = isExtensionAvailable && MmkvManager.decodeSettingsBool(PREF_IS_PREMIUM_MODE, false)
-        val isServerSelected = if (currentGuid.isNullOrEmpty()) {
-            isAutoMode
-        } else {
+        val isServerSelected = if (!currentGuid.isNullOrEmpty()) {
             val profile = MmkvManager.decodeServerConfig(currentGuid)
             profile != null && (getPremiumSubIds().contains(profile.subscriptionId) == isPremiumMode)
+        } else {
+            false
         }
 
         val fabEnabled = (isRunning || isPaused || isServerSelected) && !isHeavyProcess
@@ -1477,9 +1491,6 @@ class MainActivity : BaseActivity() {
                         } else {
                             mainViewModel.testAllRealPing(getStandardServerGuids())
                         }
-                    }
-                    if (MmkvManager.decodeSettingsBool(MmkvManager.KEY_AUTO_MODE, false)) {
-                        switchToNextBestServer(forceBest = true)
                     }
                 } else if (result.failureCount > 0) {
                     isBatchTesting = false
