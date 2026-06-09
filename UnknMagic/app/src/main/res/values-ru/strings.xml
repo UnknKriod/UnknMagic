@@ -409,6 +409,20 @@
     <string name="title_webdav_pass">Пароль</string>
     <string name="title_webdav_remote_path">Удалённый путь (необязательно)</string>
     <string name="recent_servers">Недавние сервера</string>
+    <string name="auto_mode_title">Автоматический режим</string>
+    <string name="auto_mode_summary">Автоматически переключать серверы при потере соединения</string>
+    <string name="auto_mode_checking">Автоматическая проверка связи…</string>
+    <string name="auto_mode_switching">Переключение на лучший сервер…</string>
+    <string name="auto_mode_connected">Авторежим активен, нажмите для проверки</string>
+
+    <string name="diagnostics_title">Диагностика системы</string>
+    <string name="diagnostics_run_all">Запустить все</string>
+    <string name="diagnostics_run">Запуск</string>
+    <string name="diagnostics_switch_server">Перейти на след. сервер</string>
+    <string name="no_speed_test_data">Нет данных проверки скорости</string>
+    <string name="btn_test_all_servers">Проверить все серверы</string>
+    <string name="msg_no_server_selected_updating">Сервер не выбран. Обновление подписки…</string>
+    <string name="msg_error_fetching_subscriptions">Ошибка при получении подписок</string>
 
     <string name="plugin_mode_standard">Стандартный</string>
     <string name="plugin_mode_premium">Премиум</string>

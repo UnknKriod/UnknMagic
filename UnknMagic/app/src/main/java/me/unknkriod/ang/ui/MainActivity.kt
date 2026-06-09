@@ -40,7 +40,11 @@ import me.unknkriod.ang.util.LicenseProvider
 import me.unknkriod.ang.util.MessageUtil
 import me.unknkriod.ang.util.RemoteSubscription
 
+import me.unknkriod.ang.handler.DiagnosticsManager
+import me.unknkriod.ang.dto.DiagnosticService
 import me.unknkriod.ang.handler.UpdateCheckerManager
+import java.net.InetSocketAddress
+import java.net.Proxy
 import java.util.concurrent.TimeUnit
 
 class MainActivity : BaseActivity() {
@@ -61,8 +65,15 @@ class MainActivity : BaseActivity() {
     private var lastTestStartTime = 0L
     private var isLicenseAuthInProgress = false
 
+    private val diagnosticResults = mutableMapOf<String, Boolean?>()
+    private val diagnosticLoading = mutableMapOf<String, Boolean>()
+    private val diagnosticViews = mutableMapOf<String, View>()
+
     private val licenseBridge by lazy { LicenseProvider.get() }
     private val isExtensionAvailable get() = licenseBridge.isExtensionAvailable
+
+    private var autoModeJob: kotlinx.coroutines.Job? = null
+    private var healthCheckFailCount = 0
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -72,6 +83,26 @@ class MainActivity : BaseActivity() {
         binding.fab.setOnClickListener { handleFabAction() }
         binding.layoutTestStatusContainer.setOnClickListener { handleTestStatusClick() }
         binding.rvTopServers.adapter = topServersAdapter
+
+        binding.switchAutoMode.isChecked = MmkvManager.decodeSettingsBool(MmkvManager.KEY_AUTO_MODE, false)
+        binding.switchAutoMode.setOnCheckedChangeListener { _, isChecked ->
+            MmkvManager.encodeSettings(MmkvManager.KEY_AUTO_MODE, isChecked)
+            updateUIStates()
+            refreshSelectedServer()
+            if (isChecked) {
+                startAutoModeTimer()
+                switchToNextBestServer(forceBest = true)
+            } else {
+                stopAutoModeTimer()
+            }
+        }
+
+        initDiagnostics()
+        binding.btnRunAllTests.setOnClickListener { runAllDiagnostics() }
+
+        binding.btnAutoSwitchServer.setOnClickListener {
+            switchToNextBestServer()
+        }
 
         binding.btnPingAllEmpty.setOnClickListener {
             val isPremium = isExtensionAvailable && MmkvManager.decodeSettingsBool(PREF_IS_PREMIUM_MODE, false)
@@ -103,6 +134,10 @@ class MainActivity : BaseActivity() {
         
         checkConnectivityAndSwitchTab()
         refreshModeUI()
+        
+        if (binding.switchAutoMode.isChecked) {
+            startAutoModeTimer()
+        }
     }
 
     override fun onStart() {
@@ -236,6 +271,8 @@ class MainActivity : BaseActivity() {
     private fun refreshModeUI() {
         val isPremium = isExtensionAvailable && MmkvManager.decodeSettingsBool(PREF_IS_PREMIUM_MODE, false)
 
+        binding.switchAutoMode.visibility = if (isPremium) View.GONE else View.VISIBLE
+        binding.cardAutoDashboard.visibility = View.GONE // Reset dashboard visibility
         binding.layoutRecentServers.removeAllViews()
         premiumAdapters.clear()
         binding.tvNoPremiumSubs.visibility = View.GONE
@@ -295,7 +332,7 @@ class MainActivity : BaseActivity() {
                         val hasPremium = getPremiumSubIds().isNotEmpty()
                         binding.tabMode.visibility = if (hasPremium) View.VISIBLE else View.GONE
                         
-                        toast(it.message ?: "Error fetching subscriptions")
+                        toast(it.message ?: getString(R.string.msg_error_fetching_subscriptions))
                         refreshSelectedServer()
                     }
                 }
@@ -510,7 +547,7 @@ class MainActivity : BaseActivity() {
     private fun startV2Ray() {
         val guid = MmkvManager.getSelectServer()
         if (guid.isNullOrEmpty()) {
-            toast("No server selected. Updating subscription...")
+            toast(R.string.msg_no_server_selected_updating)
             importConfigViaSub()
             return
         }
@@ -695,13 +732,18 @@ class MainActivity : BaseActivity() {
     }
 
     private fun updateStandardLayout(filteredRecent: List<Pair<String, ProfileItem>>, currentGuid: String?) {
+        val isPremium = isExtensionAvailable && MmkvManager.decodeSettingsBool(PREF_IS_PREMIUM_MODE, false)
+        val isAutoMode = MmkvManager.decodeSettingsBool(MmkvManager.KEY_AUTO_MODE, false)
         binding.layoutRecentServers.removeAllViews()
+        
+        binding.cardAutoDashboard.visibility = if (isAutoMode && !isPremium) View.VISIBLE else View.GONE
+
         if (filteredRecent.isEmpty()) {
             binding.cardRecent.visibility = View.GONE
             binding.tvRecentLabel.visibility = View.GONE
         } else {
-            binding.cardRecent.visibility = View.VISIBLE
-            binding.tvRecentLabel.visibility = View.VISIBLE
+            binding.cardRecent.visibility = if (isAutoMode) View.GONE else View.VISIBLE
+            binding.tvRecentLabel.visibility = if (isAutoMode) View.GONE else View.VISIBLE
             filteredRecent.forEach { (guid, profile) ->
                 addServerToLayout(guid, profile, currentGuid, fromRecent = true)
             }
@@ -710,15 +752,19 @@ class MainActivity : BaseActivity() {
         if (currentGuid != null) {
             if (selectionFromRecent) {
                 binding.cardRecent.alpha = 1.0f
-                binding.rvTopServers.alpha = 0.5f
+                binding.rvTopServers.alpha = 0.3f
             } else {
-                binding.cardRecent.alpha = 0.5f
+                binding.cardRecent.alpha = 0.3f
                 binding.rvTopServers.alpha = 1.0f
             }
         } else {
             binding.cardRecent.alpha = 1.0f
             binding.rvTopServers.alpha = 1.0f
         }
+        
+        // Hide/Show Top 10 based on Auto Mode
+        binding.tvTopLabel.visibility = if (isAutoMode) View.GONE else View.VISIBLE
+        binding.rvTopServers.visibility = if (isAutoMode) View.GONE else View.VISIBLE
     }
 
     private fun addServerToLayout(guid: String, profile: ProfileItem, currentGuid: String?, fromRecent: Boolean) {
@@ -752,6 +798,7 @@ class MainActivity : BaseActivity() {
 
         itemView.setOnClickListener {
             if (isBatchTesting || isPostUpdatePingInProgress) return@setOnClickListener
+            if (MmkvManager.decodeSettingsBool(MmkvManager.KEY_AUTO_MODE, false)) return@setOnClickListener
             selectionFromRecent = fromRecent
             val currentSelect = MmkvManager.getSelectServer()
             if (currentSelect == guid) {
@@ -796,8 +843,263 @@ class MainActivity : BaseActivity() {
         return premiumSubsStr?.split(",")?.filter { it.isNotEmpty() }?.toSet() ?: emptySet()
     }
 
+    private fun startAutoModeTimer() {
+        autoModeJob?.cancel()
+        autoModeJob = lifecycleScope.launch(Dispatchers.Default) {
+            while (true) {
+                delay(60_000L) // Once a minute
+                
+                val isRunning = mainViewModel.isRunning.value == true
+                val isPaused = mainViewModel.isPaused.value == true
+                
+                if (isRunning && !isPaused) {
+                    performHealthCheck()
+                }
+            }
+        }
+    }
+
+    private fun initDiagnostics() {
+        val services = DiagnosticsManager.getServices(this)
+        binding.layoutDiagnosticsContainer.removeAllViews()
+        diagnosticViews.clear()
+
+        services.forEach { service ->
+            val itemView = layoutInflater.inflate(R.layout.item_diagnostic_service, binding.layoutDiagnosticsContainer, false)
+            val tvTitle: TextView = itemView.findViewById(R.id.tv_title)
+            val btnTest: View = itemView.findViewById(R.id.btn_test)
+
+            tvTitle.text = service.title
+            btnTest.setOnClickListener { runDiagnostic(service) }
+
+            diagnosticViews[service.id] = itemView
+            binding.layoutDiagnosticsContainer.addView(itemView)
+
+            // Sync initial state
+            updateDiagnosticView(service.id)
+        }
+    }
+
+    private fun runDiagnostic(service: DiagnosticService) {
+        if (diagnosticLoading[service.id] == true) return
+        lifecycleScope.launch {
+            diagnosticLoading[service.id] = true
+            updateUIStates()
+            updateDiagnosticView(service.id)
+
+            var allSuccess = true
+            for (url in service.urls) {
+                if (!testService(url)) {
+                    allSuccess = false
+                    break
+                }
+            }
+
+            diagnosticResults[service.id] = allSuccess
+            diagnosticLoading[service.id] = false
+            updateUIStates()
+            updateDiagnosticView(service.id)
+            checkManualResultsAndSwitch()
+        }
+    }
+
+    private fun runAllDiagnostics() {
+        val services = DiagnosticsManager.getServices(this)
+        if (services.any { diagnosticLoading[it.id] == true }) return
+
+        lifecycleScope.launch {
+            services.forEach { service ->
+                runDiagnostic(service)
+                while (diagnosticLoading[service.id] == true) delay(100)
+            }
+        }
+    }
+
+    private fun updateDiagnosticView(serviceId: String) {
+        val view = diagnosticViews[serviceId] ?: return
+        val ivStatus: ImageView = view.findViewById(R.id.iv_status)
+        val pbTest: View = view.findViewById(R.id.pb_test)
+        val btnTest: View = view.findViewById(R.id.btn_test)
+
+        val isLoading = diagnosticLoading[serviceId] == true
+        val result = diagnosticResults[serviceId]
+
+        pbTest.visibility = if (isLoading) View.VISIBLE else View.GONE
+        ivStatus.visibility = if (isLoading) View.GONE else View.VISIBLE
+
+        if (!isLoading) {
+            updateIndicator(ivStatus, result)
+        }
+
+        val isRunning = mainViewModel.isRunning.value == true
+        val isPaused = mainViewModel.isPaused.value == true
+        val isBatch = isBatchTesting || isPostUpdatePingInProgress
+        val isUpdating = isFetchingRemote || isSubscriptionUpdating
+        val isTestingManual = diagnosticLoading.values.any { it }
+
+        btnTest.isEnabled = isRunning && !isPaused && !isBatch && !isUpdating && !isTestingManual
+    }
+
+    private fun stopAutoModeTimer() {
+        autoModeJob?.cancel()
+        autoModeJob = null
+        healthCheckFailCount = 0
+    }
+
+    private suspend fun testService(urlStr: String): Boolean {
+        return withContext(Dispatchers.IO) {
+            try {
+                val socksPort = SettingsManager.getSocksPort()
+                val proxy = Proxy(Proxy.Type.SOCKS, InetSocketAddress("127.0.0.1", socksPort))
+                
+                val connection = URL(urlStr).openConnection(proxy) as HttpURLConnection
+                connection.connectTimeout = 5000
+                connection.readTimeout = 5000
+                connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+                
+                val code = connection.responseCode
+                connection.disconnect()
+                Log.d("UnknMagic", "Manual Test (via Proxy): $urlStr returned $code")
+                code == 200 || code in 400..499
+            } catch (e: Exception) {
+                Log.e("UnknMagic", "Manual Test (via Proxy): $urlStr failed: ${e.message}")
+                false
+            }
+        }
+    }
+
+    private fun updateIndicator(view: ImageView, success: Boolean?) {
+        val (iconRes, color) = when (success) {
+            true -> R.drawable.ic_check_24dp to 0xFF009966.toInt()
+            false -> R.drawable.ic_close_24dp to 0xFFFF0000.toInt()
+            null -> R.drawable.ic_remove_24dp to ContextCompat.getColor(this, R.color.color_fab_inactive)
+        }
+        view.setImageResource(iconRes)
+        view.imageTintList = ColorStateList.valueOf(color)
+    }
+
+    private fun checkManualResultsAndSwitch() {
+        val results = diagnosticResults.values.filterNotNull()
+        if (results.isNotEmpty() && results.all { !it }) {
+            Log.i("UnknMagic", "Auto Mode: All manual tests failed. Triggering immediate switch.")
+            switchToNextBestServer()
+        } else if (results.any { !it }) {
+            binding.btnAutoSwitchServer.visibility = View.VISIBLE
+        } else {
+            binding.btnAutoSwitchServer.visibility = View.GONE
+        }
+    }
+
+    private suspend fun performHealthCheck() {
+        Log.i("UnknMagic", "Auto Mode: Starting background health check...")
+
+        val services = DiagnosticsManager.getServices(this)
+
+        withContext(Dispatchers.Main) {
+            services.forEach { service ->
+                diagnosticLoading[service.id] = true
+                updateDiagnosticView(service.id)
+            }
+        }
+
+        var allServicesSuccess = true
+        for (service in services) {
+            var serviceSuccess = true
+            for (url in service.urls) {
+                if (!testService(url)) {
+                    serviceSuccess = false
+                    break
+                }
+            }
+
+            withContext(Dispatchers.Main) {
+                diagnosticResults[service.id] = serviceSuccess
+                diagnosticLoading[service.id] = false
+                updateDiagnosticView(service.id)
+            }
+
+            if (!serviceSuccess) {
+                allServicesSuccess = false
+            }
+        }
+
+        withContext(Dispatchers.Main) {
+            if (allServicesSuccess) {
+                Log.i("UnknMagic", "Auto Mode: Health check PASSED")
+                healthCheckFailCount = 0
+            } else {
+                healthCheckFailCount++
+                Log.w("UnknMagic", "Auto Mode: Health check FAILED ($healthCheckFailCount/3)")
+                if (healthCheckFailCount >= 3) {
+                    healthCheckFailCount = 0
+                    Log.i("UnknMagic", "Auto Mode: Threshold reached. Switching server...")
+                    switchToNextBestServer()
+                }
+            }
+        }
+    }
+
+    private fun switchToNextBestServer(forceBest: Boolean = false) {
+        lifecycleScope.launch(Dispatchers.Default) {
+            val allServers = MmkvManager.decodeAllServerList().mapNotNull { guid ->
+                val profile = MmkvManager.decodeServerConfig(guid)
+                if (profile != null) guid to profile else null
+            }
+
+            val premiumIds = getPremiumSubIds()
+            val standardServers = allServers.filter { !premiumIds.contains(it.second.subscriptionId) }
+            
+            if (standardServers.isEmpty()) return@launch
+
+            val currentGuid = MmkvManager.getSelectServer()
+            
+            val sortedServers = standardServers.sortedBy {
+                val delay = MmkvManager.decodeServerAffiliationInfo(it.first)?.testDelayMillis ?: 0L
+                if (delay <= 0) Long.MAX_VALUE else delay
+            }
+
+            val nextServer = if (forceBest) {
+                sortedServers.firstOrNull()
+            } else {
+                val currentIdx = sortedServers.indexOfFirst { it.first == currentGuid }
+                if (currentIdx != -1) {
+                    val nextIdx = (currentIdx + 1) % sortedServers.size
+                    val candidate = sortedServers[nextIdx]
+                    val candidateDelay = MmkvManager.decodeServerAffiliationInfo(candidate.first)?.testDelayMillis ?: 0L
+                    
+                    // Если у следующего по списку сервера тоже есть пинг, берем его. 
+                    // Если мы дошли до серверов без пинга (Long.MAX_VALUE), возвращаемся к началу (к лучшему).
+                    if (candidateDelay > 0) candidate else sortedServers.firstOrNull()
+                } else {
+                    sortedServers.firstOrNull()
+                }
+            }
+
+            if (nextServer != null && (nextServer.first != currentGuid || forceBest)) {
+                withContext(Dispatchers.Main) {
+                    if (nextServer.first != currentGuid) {
+                        toast(getString(R.string.auto_mode_switching))
+                        MmkvManager.setSelectServer(nextServer.first)
+                        
+                        // Reset manual results and UI on server change
+                        diagnosticResults.clear()
+                        diagnosticLoading.clear()
+                        DiagnosticsManager.getServices(this@MainActivity).forEach {
+                            updateDiagnosticView(it.id)
+                        }
+                        binding.btnAutoSwitchServer.visibility = View.GONE
+
+                        refreshSelectedServer()
+                        restartV2Ray()
+                    }
+                }
+            }
+        }
+    }
+
     private fun updateTop10List() {
         val isPremium = isExtensionAvailable && MmkvManager.decodeSettingsBool(PREF_IS_PREMIUM_MODE, false)
+        val isAutoMode = MmkvManager.decodeSettingsBool(MmkvManager.KEY_AUTO_MODE, false)
         if (isPremium) {
             updateUIStates()
             return
@@ -812,10 +1114,10 @@ class MainActivity : BaseActivity() {
             MmkvManager.decodeServerAffiliationInfo(item.guid)?.testDelayMillis ?: Long.MAX_VALUE
         }.take(10)
 
-        if (displayServers.isEmpty()) {
+        if (displayServers.isEmpty() || isAutoMode) {
             binding.rvTopServers.visibility = View.GONE
             binding.tvTopLabel.visibility = View.GONE
-            binding.layoutEmptyTop.visibility = View.VISIBLE
+            binding.layoutEmptyTop.visibility = if (isAutoMode) View.GONE else View.VISIBLE
         } else {
             binding.rvTopServers.visibility = View.VISIBLE
             binding.tvTopLabel.visibility = View.VISIBLE
@@ -845,12 +1147,13 @@ class MainActivity : BaseActivity() {
         val isStoppingText = testResult == getString(R.string.connection_test_stopping)
 
         val isHeavyProcess = isBatch || isUpdating
+        val isAutoMode = MmkvManager.decodeSettingsBool(MmkvManager.KEY_AUTO_MODE, false)
 
         // 1. FAB (Stop/Play/Resume)
         val currentGuid = MmkvManager.getSelectServer()
         val isPremiumMode = isExtensionAvailable && MmkvManager.decodeSettingsBool(PREF_IS_PREMIUM_MODE, false)
         val isServerSelected = if (currentGuid.isNullOrEmpty()) {
-            false
+            isAutoMode
         } else {
             val profile = MmkvManager.decodeServerConfig(currentGuid)
             profile != null && (getPremiumSubIds().contains(profile.subscriptionId) == isPremiumMode)
@@ -898,6 +1201,19 @@ class MainActivity : BaseActivity() {
         
         // Устанавливаем полную непрозрачность во время теста или если есть результат
         binding.layoutTestStatusContainer.alpha = if (isAnyTesting || testResult != null || isRunning || isServerSelected) 1.0f else 0.6f
+
+        if (isAutoMode && isRunning && !isPaused && !isAnyTesting && testResult == null) {
+            binding.tvTestState.text = getString(R.string.auto_mode_connected)
+        }
+
+        // Diagnostics Panel State
+        val isTestingManual = diagnosticLoading.values.any { it }
+        val canRunDiagnostics = isRunning && !isPaused && !isHeavyProcess && !isTestingManual
+        binding.btnRunAllTests.isEnabled = canRunDiagnostics
+        binding.cardAutoDashboard.alpha = if (isRunning && !isPaused) 1.0f else 0.6f
+
+        // Update all diagnostic views to reflect enabled/disabled state
+        diagnosticViews.keys.forEach { updateDiagnosticView(it) }
 
         if (isBatch) {
             binding.tvTestState.setBackgroundResource(R.drawable.bg_test_state_tag_top)
@@ -990,6 +1306,7 @@ class MainActivity : BaseActivity() {
 
             holder.itemView.setOnClickListener {
                 if (isBatchTesting || isPostUpdatePingInProgress) return@setOnClickListener
+                if (MmkvManager.decodeSettingsBool(MmkvManager.KEY_AUTO_MODE, false)) return@setOnClickListener
                 selectionFromRecent = fromRecent
                 val currentSelect = MmkvManager.getSelectServer()
                 if (currentSelect == item.guid) {
@@ -1160,6 +1477,9 @@ class MainActivity : BaseActivity() {
                         } else {
                             mainViewModel.testAllRealPing(getStandardServerGuids())
                         }
+                    }
+                    if (MmkvManager.decodeSettingsBool(MmkvManager.KEY_AUTO_MODE, false)) {
+                        switchToNextBestServer(forceBest = true)
                     }
                 } else if (result.failureCount > 0) {
                     isBatchTesting = false

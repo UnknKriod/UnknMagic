@@ -112,15 +112,90 @@
                 android:text="@string/plugin_mode_premium" />
         </com.google.android.material.tabs.TabLayout>
 
+        <com.google.android.material.materialswitch.MaterialSwitch
+            android:id="@+id/switch_auto_mode"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="@string/auto_mode_title"
+            android:textSize="14sp"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintTop_toBottomOf="@id/tab_mode" />
+
         <LinearLayout
+            android:id="@+id/layout_main_content"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
             android:paddingHorizontal="24dp"
             android:paddingBottom="24dp"
             android:orientation="vertical"
-            app:layout_constraintTop_toBottomOf="@id/tab_mode"
+            app:layout_constraintTop_toBottomOf="@id/switch_auto_mode"
             app:layout_constraintBottom_toBottomOf="parent">
+
+            <!-- Auto Mode Dashboard -->
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/card_auto_dashboard"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:visibility="gone"
+                app:cardCornerRadius="20dp"
+                app:cardElevation="0dp"
+                app:strokeWidth="1dp"
+                app:strokeColor="?attr/colorOutlineVariant">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="20dp">
+
+                    <RelativeLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="24dp">
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_centerVertical="true"
+                            android:text="@string/diagnostics_title"
+                            android:textStyle="bold"
+                            android:textSize="16sp"
+                            android:textColor="?attr/colorPrimary"/>
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btn_run_all_tests"
+                            style="@style/Widget.Material3.Button.TextButton"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_alignParentEnd="true"
+                            android:text="@string/diagnostics_run_all"
+                            app:icon="@drawable/ic_play_24dp"
+                            android:textSize="12sp"
+                            android:paddingHorizontal="8dp"
+                            android:minWidth="0dp"
+                            android:minHeight="0dp"/>
+                    </RelativeLayout>
+
+                    <LinearLayout
+                        android:id="@+id/layout_diagnostics_container"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btn_auto_switch_server"
+                        style="@style/Widget.Material3.Button.TonalButton"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="@string/diagnostics_switch_server"
+                        android:visibility="gone"
+                        app:icon="@drawable/ic_qu_switch_24dp"
+                        android:textColor="@color/color_stop_red"
+                        app:iconTint="@color/color_stop_red"/>
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
 
             <TextView
                 android:id="@+id/tv_recent_label"
@@ -191,7 +266,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="No speed test data"
+                    android:text="@string/no_speed_test_data"
                     android:textColor="@color/color_fab_inactive"
                     android:layout_marginBottom="16dp" />
 
@@ -199,7 +274,7 @@
                     android:id="@+id/btn_ping_all_empty"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Test All Servers"
+                    android:text="@string/btn_test_all_servers"
                     app:icon="@drawable/ic_cloud_download_24dp" />
             </LinearLayout>
 

@@ -413,6 +413,20 @@
     <string name="title_webdav_pass">Password</string>
     <string name="title_webdav_remote_path">Remote directory (optional)</string>
     <string name="recent_servers">Recent servers</string>
+    <string name="auto_mode_title">Automatic Mode</string>
+    <string name="auto_mode_summary">Automatically switch servers when connection is lost</string>
+    <string name="auto_mode_checking">Automatic health check…</string>
+    <string name="auto_mode_switching">Switching to better server…</string>
+    <string name="auto_mode_connected">Auto-mode active</string>
+
+    <string name="diagnostics_title">System Diagnostics</string>
+    <string name="diagnostics_run_all">Run All</string>
+    <string name="diagnostics_run">Run</string>
+    <string name="diagnostics_switch_server">Switch to Next Server</string>
+    <string name="no_speed_test_data">No speed test data</string>
+    <string name="btn_test_all_servers">Test All Servers</string>
+    <string name="msg_no_server_selected_updating">No server selected. Updating subscription...</string>
+    <string name="msg_error_fetching_subscriptions">Error fetching subscriptions</string>
 
     <string name="plugin_mode_standard">Standard</string>
     <string name="plugin_mode_premium">Premium</string>

@@ -1,0 +1,20 @@
+[
+  {
+    "id": "ifconfig",
+    "title": "Global IP (ifconfig.me)",
+    "urls": ["https://ifconfig.me"],
+    "priority": 1
+  },
+  {
+    "id": "youtube",
+    "title": "YouTube Content Delivery",
+    "urls": ["https://www.youtube.com", "https://i.ytimg.com/vi/QDia3e12czc/mqdefault.jpg", "https://i.ytimg.com/vi/dQw4w9WgXcQ/mqdefault.jpg"],
+    "priority": 2
+  },
+  {
+    "id": "telegram",
+    "title": "Telegram",
+    "urls": ["https://api.telegram.org/bot123456:invalid/getMe"],
+    "priority": 3
+  }
+]
