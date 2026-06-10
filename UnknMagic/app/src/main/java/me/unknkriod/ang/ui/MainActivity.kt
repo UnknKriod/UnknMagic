@@ -64,6 +64,7 @@ class MainActivity : BaseActivity() {
     private var hasSeenTestResult = false
     private var lastTestStartTime = 0L
     private var isLicenseAuthInProgress = false
+    private var isSwitchingServer = false
 
     private val diagnosticResults = mutableMapOf<String, Boolean?>()
     private val diagnosticLoading = mutableMapOf<String, Boolean>()
@@ -586,11 +587,16 @@ class MainActivity : BaseActivity() {
     }
 
     fun restartV2Ray() {
-        if (mainViewModel.isRunning.value == true) {
-            CoreServiceManager.stopVService(this)
-        }
         lifecycleScope.launch {
-            delay(500)
+            if (mainViewModel.isRunning.value == true) {
+                CoreServiceManager.stopVService(this@MainActivity)
+                var retry = 0
+                while (mainViewModel.isRunning.value == true && retry < 30) {
+                    delay(100)
+                    retry++
+                }
+            }
+            delay(300)
             startV2Ray()
         }
     }
@@ -976,6 +982,7 @@ class MainActivity : BaseActivity() {
     }
 
     private suspend fun testService(urlStr: String): Boolean {
+        if (isSwitchingServer) return true
         return withContext(Dispatchers.IO) {
             try {
                 val socksPort = SettingsManager.getSocksPort()
@@ -1008,6 +1015,8 @@ class MainActivity : BaseActivity() {
     }
 
     private fun checkManualResultsAndSwitch() {
+        if (diagnosticLoading.values.any { it }) return
+
         val results = diagnosticResults.values.filterNotNull()
         if (results.isNotEmpty() && results.all { !it }) {
             Log.i("UnknMagic", "Auto Mode: All manual tests failed. Triggering immediate switch.")
@@ -1069,70 +1078,95 @@ class MainActivity : BaseActivity() {
     }
 
     private fun switchToNextBestServer(forceBest: Boolean = false, forceReconnect: Boolean? = null) {
+        if (isSwitchingServer) return
+        isSwitchingServer = true
+
         lifecycleScope.launch(Dispatchers.Default) {
-            val allServers = MmkvManager.decodeAllServerList().mapNotNull { guid ->
-                val profile = MmkvManager.decodeServerConfig(guid)
-                if (profile != null) guid to profile else null
-            }
-
-            val premiumIds = getPremiumSubIds()
-            val standardServers = allServers.filter { !premiumIds.contains(it.second.subscriptionId) }
-            
-            if (standardServers.isEmpty()) return@launch
-
-            val currentGuid = MmkvManager.getSelectServer()
-            
-            val sortedServers = standardServers.sortedBy {
-                val delay = MmkvManager.decodeServerAffiliationInfo(it.first)?.testDelayMillis ?: 0L
-                if (delay <= 0) Long.MAX_VALUE else delay
-            }
-
-            val nextServer = if (forceBest) {
-                val candidate = sortedServers.firstOrNull()
-                val candidateDelay = candidate?.let { MmkvManager.decodeServerAffiliationInfo(it.first)?.testDelayMillis } ?: 0L
-                if (candidateDelay > 0) candidate else null
-            } else {
-                val currentIdx = sortedServers.indexOfFirst { it.first == currentGuid }
-                if (currentIdx != -1) {
-                    val nextIdx = (currentIdx + 1) % sortedServers.size
-                    val candidate = sortedServers[nextIdx]
-                    val candidateDelay = MmkvManager.decodeServerAffiliationInfo(candidate.first)?.testDelayMillis ?: 0L
-                    
-                    // Если у следующего по списку сервера тоже есть пинг, берем его. 
-                    // Если мы дошли до серверов без пинга (Long.MAX_VALUE), возвращаемся к началу (к лучшему).
-                    if (candidateDelay > 0) candidate else sortedServers.firstOrNull()
-                } else {
-                    sortedServers.firstOrNull()
+            try {
+                val allServers = MmkvManager.decodeAllServerList().mapNotNull { guid ->
+                    val profile = MmkvManager.decodeServerConfig(guid)
+                    if (profile != null) guid to profile else null
                 }
-            }
 
-            if (nextServer != null) {
-                val isNewServer = nextServer.first != currentGuid
-                if (isNewServer || forceBest) {
-                    withContext(Dispatchers.Main) {
-                        if (isNewServer) {
-                            MmkvManager.setSelectServer(nextServer.first)
-                            
-                            // Reset manual results and UI on server change
-                            diagnosticResults.clear()
-                            diagnosticLoading.clear()
-                            DiagnosticsManager.getServices(this@MainActivity).forEach {
-                                updateDiagnosticView(it.id)
-                            }
-                            binding.btnAutoSwitchServer.visibility = View.GONE
+                val premiumIds = getPremiumSubIds()
+                val standardServers = allServers.filter { !premiumIds.contains(it.second.subscriptionId) }
+                
+                if (standardServers.isEmpty()) return@launch
 
-                            refreshSelectedServer()
-                        }
+                val currentGuid = MmkvManager.getSelectServer()
+                
+                val sortedServers = standardServers.map { 
+                    it to (MmkvManager.decodeServerAffiliationInfo(it.first)?.testDelayMillis ?: 0L)
+                }.sortedBy {
+                    val delay = it.second
+                    if (delay <= 0) Long.MAX_VALUE else delay
+                }.map { it.first }
+
+                val nextServer = if (forceBest) {
+                    val candidate = sortedServers.firstOrNull()
+                    val candidateDelay = candidate?.let { MmkvManager.decodeServerAffiliationInfo(it.first)?.testDelayMillis } ?: 0L
+                    if (candidateDelay > 0) candidate else null
+                } else {
+                    val currentIdx = sortedServers.indexOfFirst { it.first == currentGuid }
+                    if (currentIdx != -1) {
+                        val nextIdx = (currentIdx + 1) % sortedServers.size
+                        val candidate = sortedServers[nextIdx]
+                        val candidateDelay = MmkvManager.decodeServerAffiliationInfo(candidate.first)?.testDelayMillis ?: 0L
                         
-                        val shouldReconnect = forceReconnect ?: (mainViewModel.isRunning.value == true)
-                        if (shouldReconnect) {
+                        if (candidateDelay > 0) candidate else sortedServers.firstOrNull()
+                    } else {
+                        sortedServers.firstOrNull()
+                    }
+                }
+
+                if (nextServer != null) {
+                    val isNewServer = nextServer.first != currentGuid
+                    if (isNewServer || forceBest) {
+                        withContext(Dispatchers.Main) {
                             if (isNewServer) {
-                                toast(getString(R.string.auto_mode_switching))
+                                MmkvManager.setSelectServer(nextServer.first)
+                                
+                                diagnosticResults.clear()
+                                diagnosticLoading.clear()
+                                DiagnosticsManager.getServices(this@MainActivity).forEach {
+                                    updateDiagnosticView(it.id)
+                                }
+                                binding.btnAutoSwitchServer.visibility = View.GONE
+
+                                refreshSelectedServer()
                             }
-                            restartV2Ray()
+                            
+                            val shouldReconnect = forceReconnect ?: (mainViewModel.isRunning.value == true)
+                            if (shouldReconnect) {
+                                if (isNewServer) {
+                                    toast(getString(R.string.auto_mode_switching))
+                                }
+                                
+                                if (mainViewModel.isRunning.value == true) {
+                                    CoreServiceManager.stopVService(this@MainActivity)
+                                    var retry = 0
+                                    while (mainViewModel.isRunning.value == true && retry < 30) {
+                                        delay(200)
+                                        retry++
+                                    }
+                                }
+                                delay(500)
+                                startV2Ray()
+                                
+                                var retryStart = 0
+                                while (mainViewModel.isRunning.value != true && retryStart < 30) {
+                                    delay(200)
+                                    retryStart++
+                                }
+                                delay(2000)
+                            }
                         }
                     }
                 }
+            } catch (e: Exception) {
+                Log.e("UnknMagic", "AutoSwitch error", e)
+            } finally {
+                isSwitchingServer = false
             }
         }
     }
@@ -1146,13 +1180,15 @@ class MainActivity : BaseActivity() {
         }
 
         val premiumIds = getPremiumSubIds()
-        val allServers = mainViewModel.serversCache
+        val allServers = ArrayList(mainViewModel.serversCache)
         val displayServers = allServers.filter { item ->
             val delay = MmkvManager.decodeServerAffiliationInfo(item.guid)?.testDelayMillis ?: 0L
             delay > 0 && !premiumIds.contains(item.profile.subscriptionId)
-        }.sortedBy { item ->
-            MmkvManager.decodeServerAffiliationInfo(item.guid)?.testDelayMillis ?: Long.MAX_VALUE
-        }.take(10)
+        }.map { item ->
+            item to (MmkvManager.decodeServerAffiliationInfo(item.guid)?.testDelayMillis ?: 0L)
+        }.sortedBy { it.second }
+        .map { it.first }
+        .take(10)
 
         if (displayServers.isEmpty() || isAutoMode) {
             binding.rvTopServers.visibility = View.GONE
