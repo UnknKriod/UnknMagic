@@ -410,7 +410,12 @@ class MainActivity : BaseActivity() {
     private var lastAutoUpdateTime = 0L
 
     private fun setupViewModel() {
-        mainViewModel.isRunning.observe(this) {
+        mainViewModel.isRunning.observe(this) { isRunning ->
+            if (!isRunning) {
+                diagnosticResults.clear()
+                diagnosticLoading.clear()
+                binding.btnAutoSwitchServer.visibility = View.GONE
+            }
             updateUIStates()
         }
         mainViewModel.isPaused.observe(this) {
