@@ -74,6 +74,7 @@ class MainActivity : BaseActivity() {
 
     private var autoModeJob: kotlinx.coroutines.Job? = null
     private var healthCheckFailCount = 0
+    private var testResultResetJob: kotlinx.coroutines.Job? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -417,16 +418,36 @@ class MainActivity : BaseActivity() {
         }
         mainViewModel.updateTestResultAction.observe(this) { result ->
             val testingText = getString(R.string.connection_test_testing)
+            val stoppingText = getString(R.string.connection_test_stopping)
             val now = System.currentTimeMillis()
 
             if (result != null) {
-                if (result != testingText && result != getString(R.string.connection_test_stopping)) {
+                if (result != testingText && result != stoppingText) {
                     hasSeenTestResult = true
+                    if (!isBatchTesting && !isPostUpdatePingInProgress) {
+                        testResultResetJob?.cancel()
+                        testResultResetJob = lifecycleScope.launch {
+                            delay(2000)
+                            mainViewModel.updateTestResultAction.value = null
+                        }
+                    } else {
+                        testResultResetJob?.cancel()
+                    }
+                } else if (result == testingText) {
+                    testResultResetJob?.cancel()
+                    testResultResetJob = lifecycleScope.launch {
+                        delay(15000)
+                        if (mainViewModel.updateTestResultAction.value == testingText) {
+                            mainViewModel.updateTestResultAction.value = null
+                        }
+                    }
                 }
+
                 if (isSingleTesting && result != testingText) {
                     isSingleTesting = false
                 }
             } else {
+                testResultResetJob?.cancel()
                 if ((isBatchTesting || isPostUpdatePingInProgress) && !hasSeenTestResult && (now - lastTestStartTime < 1000)) {
                     return@observe
                 }
