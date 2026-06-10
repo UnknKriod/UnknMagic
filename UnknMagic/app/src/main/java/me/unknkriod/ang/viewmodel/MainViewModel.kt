@@ -448,7 +448,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
             // If we are stopping, ignore most test-related updates to prevent UI flicker/restore
             if (isStoppingTest && (key == AppConfig.MSG_MEASURE_CONFIG_NOTIFY ||
-                        key == AppConfig.MSG_MEASURE_CONFIG_SUCCESS ||
                         key == AppConfig.MSG_MEASURE_DELAY_SUCCESS)) {
                 return
             }

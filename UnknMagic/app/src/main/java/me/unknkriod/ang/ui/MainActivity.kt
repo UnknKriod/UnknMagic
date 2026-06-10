@@ -413,6 +413,12 @@ class MainActivity : BaseActivity() {
     private fun setupViewModel() {
         mainViewModel.isRunning.observe(this) { isRunning ->
             if (!isRunning) {
+                mainViewModel.stopTest()
+                mainViewModel.updateTestResultAction.value = null
+                isBatchTesting = false
+                isSingleTesting = false
+                isPostUpdatePingInProgress = false
+
                 diagnosticResults.clear()
                 diagnosticLoading.clear()
                 binding.btnAutoSwitchServer.visibility = View.GONE
