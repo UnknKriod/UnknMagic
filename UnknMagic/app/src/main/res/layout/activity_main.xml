@@ -149,57 +149,70 @@
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:padding="20dp">
-
-                    <androidx.constraintlayout.widget.ConstraintLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginBottom="24dp">
-                        <TextView
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:text="@string/diagnostics_title"
-                            android:textStyle="bold"
-                            android:textSize="16sp"
-                            android:textColor="?attr/colorPrimary"
-                            app:layout_constraintStart_toStartOf="parent"
-                            app:layout_constraintEnd_toStartOf="@id/btn_run_all_tests"
-                            app:layout_constraintTop_toTopOf="parent"
-                            app:layout_constraintBottom_toBottomOf="parent"
-                            android:layout_marginEnd="8dp"/>
-                        <com.google.android.material.button.MaterialButton
-                            android:id="@+id/btn_run_all_tests"
-                            style="@style/Widget.Material3.Button.TextButton"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="@string/diagnostics_run_all"
-                            app:icon="@drawable/ic_play_24dp"
-                            android:textSize="12sp"
-                            android:paddingHorizontal="8dp"
-                            android:minWidth="0dp"
-                            android:minHeight="0dp"
-                            app:layout_constraintEnd_toEndOf="parent"
-                            app:layout_constraintTop_toTopOf="parent"
-                            app:layout_constraintBottom_toBottomOf="parent"/>
-                    </androidx.constraintlayout.widget.ConstraintLayout>
+                    android:orientation="vertical">
 
                     <LinearLayout
-                        android:id="@+id/layout_diagnostics_container"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:orientation="vertical" />
+                        android:orientation="vertical"
+                        android:padding="20dp">
+
+                        <androidx.constraintlayout.widget.ConstraintLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginBottom="24dp">
+
+                            <TextView
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_marginEnd="8dp"
+                                android:text="@string/diagnostics_title"
+                                android:textColor="?attr/colorPrimary"
+                                android:textSize="16sp"
+                                android:textStyle="bold"
+                                app:layout_constraintBottom_toBottomOf="parent"
+                                app:layout_constraintEnd_toStartOf="@id/btn_run_all_tests"
+                                app:layout_constraintStart_toStartOf="parent"
+                                app:layout_constraintTop_toTopOf="parent" />
+
+                            <com.google.android.material.button.MaterialButton
+                                android:id="@+id/btn_run_all_tests"
+                                style="@style/Widget.Material3.Button.TextButton"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:minWidth="0dp"
+                                android:minHeight="0dp"
+                                android:paddingHorizontal="8dp"
+                                android:text="@string/diagnostics_run_all"
+                                android:textSize="12sp"
+                                app:icon="@drawable/ic_play_24dp"
+                                app:layout_constraintBottom_toBottomOf="parent"
+                                app:layout_constraintEnd_toEndOf="parent"
+                                app:layout_constraintTop_toTopOf="parent" />
+                        </androidx.constraintlayout.widget.ConstraintLayout>
+
+                        <LinearLayout
+                            android:id="@+id/layout_diagnostics_container"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="vertical" />
+                    </LinearLayout>
 
                     <com.google.android.material.button.MaterialButton
                         android:id="@+id/btn_auto_switch_server"
-                        style="@style/Widget.Material3.Button.TonalButton"
+                        style="@style/Widget.Material3.Button.UnelevatedButton"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
+                        android:layout_marginTop="-2dp"
+                        android:insetTop="0dp"
+                        android:insetBottom="0dp"
+                        android:minHeight="0dp"
+                        android:paddingVertical="12dp"
                         android:text="@string/diagnostics_switch_server"
+                        android:textColor="@android:color/white"
                         android:visibility="gone"
-                        app:icon="@drawable/ic_qu_switch_24dp"
-                        android:textColor="@color/color_stop_red"
-                        app:iconTint="@color/color_stop_red"/>
+                        app:backgroundTint="@color/color_stop_red"
+                        app:shapeAppearanceOverlay="@style/ShapeAppearance.App.TagBottom" />
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 

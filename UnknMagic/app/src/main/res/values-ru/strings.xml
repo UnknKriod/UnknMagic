@@ -418,7 +418,7 @@
     <string name="diagnostics_title">Диагностика системы</string>
     <string name="diagnostics_run_all">Запустить все</string>
     <string name="diagnostics_run">Запуск</string>
-    <string name="diagnostics_switch_server">Перейти на след. сервер</string>
+    <string name="diagnostics_switch_server">Перейти на следующий сервер</string>
     <string name="no_speed_test_data">Нет данных проверки скорости</string>
     <string name="btn_test_all_servers">Проверить все серверы</string>
     <string name="msg_no_server_selected_updating">Сервер не выбран. Обновление подписки…</string>
