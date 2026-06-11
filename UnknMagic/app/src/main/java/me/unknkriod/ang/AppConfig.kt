@@ -85,6 +85,7 @@ object AppConfig {
     const val PREF_LAST_UPDATE_CHECK = "last_update_check_time"
     const val PREF_LAST_AUTO_UPDATE_SUB = "last_auto_update_sub"
     const val AUTO_UPDATE_CHECK_DELAY = 5000L
+    const val TEST_RESULT_RESET_DELAY = 15000L
 
     /** Cache keys. */
     const val CACHE_SUBSCRIPTION_ID = "cache_subscription_id"

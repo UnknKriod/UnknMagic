@@ -447,7 +447,7 @@ class MainActivity : BaseActivity() {
                     if (!isBatchTesting && !isPostUpdatePingInProgress) {
                         testResultResetJob?.cancel()
                         testResultResetJob = lifecycleScope.launch {
-                            delay(2000)
+                            delay(AppConfig.TEST_RESULT_RESET_DELAY)
                             mainViewModel.updateTestResultAction.value = null
                         }
                     } else {
@@ -456,7 +456,7 @@ class MainActivity : BaseActivity() {
                 } else if (result == testingText) {
                     testResultResetJob?.cancel()
                     testResultResetJob = lifecycleScope.launch {
-                        delay(15000)
+                        delay(AppConfig.TEST_RESULT_RESET_DELAY)
                         if (mainViewModel.updateTestResultAction.value == testingText) {
                             mainViewModel.updateTestResultAction.value = null
                         }
