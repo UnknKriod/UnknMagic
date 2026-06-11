@@ -1279,7 +1279,6 @@ class MainActivity : BaseActivity() {
 
         val fabEnabled = (isRunning || isPaused || isServerSelected) && !isHeavyProcess
         binding.fab.isEnabled = fabEnabled
-        binding.fab.alpha = if (fabEnabled) 1.0f else 0.6f
 
         val iconRes = when {
             isPaused -> android.R.drawable.ic_media_pause
@@ -1365,7 +1364,8 @@ class MainActivity : BaseActivity() {
         }
 
         // 5. Switching Progress and FAB animation
-        if (isSwitchingServer || isServiceTransition || isUpdating) {
+        val showProgressBar = isSwitchingServer || isServiceTransition || isUpdating
+        if (showProgressBar) {
             if (binding.pbSwitching.visibility != View.VISIBLE) {
                 binding.pbSwitching.alpha = 0f
                 binding.pbSwitching.visibility = View.VISIBLE
@@ -1380,13 +1380,17 @@ class MainActivity : BaseActivity() {
             } else {
                 binding.pbSwitching.isIndeterminate = true
             }
-            binding.fab.animate().scaleX(0.85f).scaleY(0.85f).alpha(0.6f).setDuration(300).start()
         } else {
             if (binding.pbSwitching.visibility == View.VISIBLE) {
                 binding.pbSwitching.animate().alpha(0f).setDuration(300).withEndAction {
                     binding.pbSwitching.visibility = View.GONE
                 }.start()
             }
+        }
+
+        if (isHeavyProcess) {
+            binding.fab.animate().scaleX(0.85f).scaleY(0.85f).alpha(0.6f).setDuration(300).start()
+        } else {
             binding.fab.animate().scaleX(1.0f).scaleY(1.0f).alpha(1.0f).setDuration(300).start()
         }
 
