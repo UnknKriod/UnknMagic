@@ -369,6 +369,8 @@
     <string name="connection_paused">На паузе</string>
     <string name="connection_runing_task_left">Проверено: %s</string>
     <string name="connection_test_stopping">Остановка…</string>
+    <string name="connection_starting">Подключение…</string>
+    <string name="connection_stopping">Отключение…</string>
     <string name="action_stop_test">Остановить проверку</string>
 
     <string name="import_subscription_success">Подписка импортирована</string>

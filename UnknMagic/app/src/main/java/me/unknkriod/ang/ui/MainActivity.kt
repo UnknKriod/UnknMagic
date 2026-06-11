@@ -65,6 +65,11 @@ class MainActivity : BaseActivity() {
     private var lastTestStartTime = 0L
     private var isLicenseAuthInProgress = false
     private var isSwitchingServer = false
+    private var isConnecting = false
+    private var isDisconnecting = false
+    private var switchingCountdown = 0
+    private var switchingTotalDelay = 0L
+    private var switchingStartTime = 0L
 
     private val diagnosticResults = mutableMapOf<String, Boolean?>()
     private val diagnosticLoading = mutableMapOf<String, Boolean>()
@@ -107,7 +112,7 @@ class MainActivity : BaseActivity() {
         }
 
         binding.btnPingAllEmpty.setOnClickListener {
-            val isPremium = isExtensionAvailable && MmkvManager.decodeSettingsBool(PREF_IS_PREMIUM_MODE, false)
+            val isPremium = isExtensionAvailable && MmkvManager.decodeSettingsBool(AppConfig.PREF_IS_PREMIUM_MODE, false)
             val allServers = if (isPremium) getPremiumServerGuids() else getStandardServerGuids()
             if (allServers.isEmpty()) {
                 importConfigViaSub(triggerPing = true)
@@ -207,7 +212,7 @@ class MainActivity : BaseActivity() {
     }
 
     private fun autoCheckForUpdates() {
-        val lastCheck = MmkvManager.decodeSettingsLong(PREF_LAST_UPDATE_CHECK, 0L)
+        val lastCheck = MmkvManager.decodeSettingsLong(AppConfig.PREF_LAST_UPDATE_CHECK, 0L)
         val now = System.currentTimeMillis()
 
         if (now - lastCheck >= TimeUnit.DAYS.toMillis(1)) {
@@ -220,7 +225,7 @@ class MainActivity : BaseActivity() {
                     retryCount++
                 }
 
-                delay(AUTO_UPDATE_CHECK_DELAY)
+                delay(AppConfig.AUTO_UPDATE_CHECK_DELAY)
 
                 try {
                     val result = UpdateCheckerManager.checkForUpdate()
@@ -231,7 +236,7 @@ class MainActivity : BaseActivity() {
                             }
                         }
                     }
-                    MmkvManager.encodeSettings(PREF_LAST_UPDATE_CHECK, now)
+                    MmkvManager.encodeSettings(AppConfig.PREF_LAST_UPDATE_CHECK, now)
                 } catch (e: Exception) {
                     Log.e("Unknown Magic", "Auto update check failed", e)
                 }
@@ -261,7 +266,7 @@ class MainActivity : BaseActivity() {
         binding.tabMode.addOnTabSelectedListener(object : TabLayout.OnTabSelectedListener {
             override fun onTabSelected(tab: TabLayout.Tab?) {
                 val isPremium = tab?.position == 1
-                MmkvManager.encodeSettings(PREF_IS_PREMIUM_MODE, isPremium)
+                MmkvManager.encodeSettings(AppConfig.PREF_IS_PREMIUM_MODE, isPremium)
                 refreshModeUI()
             }
 
@@ -271,7 +276,7 @@ class MainActivity : BaseActivity() {
     }
 
     private fun refreshModeUI() {
-        val isPremium = isExtensionAvailable && MmkvManager.decodeSettingsBool(PREF_IS_PREMIUM_MODE, false)
+        val isPremium = isExtensionAvailable && MmkvManager.decodeSettingsBool(AppConfig.PREF_IS_PREMIUM_MODE, false)
 
         binding.switchAutoMode.visibility = if (isPremium) View.GONE else View.VISIBLE
         binding.cardAutoDashboard.visibility = View.GONE // Reset dashboard visibility
@@ -322,8 +327,8 @@ class MainActivity : BaseActivity() {
                         val hasPremium = subs.isNotEmpty() || getPremiumSubIds().isNotEmpty()
                         binding.tabMode.visibility = if (hasPremium) View.VISIBLE else View.GONE
                         
-                        if (!hasPremium && MmkvManager.decodeSettingsBool(PREF_IS_PREMIUM_MODE, false)) {
-                            MmkvManager.encodeSettings(PREF_IS_PREMIUM_MODE, false)
+                        if (!hasPremium && MmkvManager.decodeSettingsBool(AppConfig.PREF_IS_PREMIUM_MODE, false)) {
+                            MmkvManager.encodeSettings(AppConfig.PREF_IS_PREMIUM_MODE, false)
                             binding.tabMode.getTabAt(0)?.select()
                         }
 
@@ -394,7 +399,7 @@ class MainActivity : BaseActivity() {
                 }
             }
 
-            MmkvManager.encodeSettings(PREF_PREMIUM_SUBS_LIST, newPremiumIds.joinToString(","))
+            MmkvManager.encodeSettings(AppConfig.PREF_PREMIUM_SUBS_LIST, newPremiumIds.joinToString(","))
 
             if (anyUpdate) {
                 withContext(Dispatchers.Main) {
@@ -412,6 +417,9 @@ class MainActivity : BaseActivity() {
 
     private fun setupViewModel() {
         mainViewModel.isRunning.observe(this) { isRunning ->
+            isConnecting = false
+            isDisconnecting = false
+            
             if (!isRunning) {
                 mainViewModel.stopTest()
                 mainViewModel.updateTestResultAction.value = null
@@ -472,12 +480,12 @@ class MainActivity : BaseActivity() {
             }
 
             if (result != null && (result == "EOF_DETECTED" || result.contains("EOF", ignoreCase = true))) {
-                val lastAutoUpdate = MmkvManager.decodeSettingsLong("last_auto_update_sub", 0L)
+                val lastAutoUpdate = MmkvManager.decodeSettingsLong(AppConfig.PREF_LAST_AUTO_UPDATE_SUB, 0L)
                 val isStandardTab = binding.tabMode.selectedTabPosition == 0
                 val canAutoUpdate = isStandardTab && (now - lastAutoUpdate > 60_000L)
 
                 if (canAutoUpdate) {
-                    MmkvManager.encodeSettings("last_auto_update_sub", now)
+                    MmkvManager.encodeSettings(AppConfig.PREF_LAST_AUTO_UPDATE_SUB, now)
                     toast(R.string.msg_subscription_auto_update_warning)
                     importConfigViaSub(triggerPing = true)
                 }
@@ -503,6 +511,8 @@ class MainActivity : BaseActivity() {
             return
         }
         if (mainViewModel.isRunning.value == true) {
+            isDisconnecting = true
+            updateUIStates()
             CoreServiceManager.stopVService(this)
         } else {
             val allServers = MmkvManager.decodeAllServerList()
@@ -512,7 +522,7 @@ class MainActivity : BaseActivity() {
             }
 
             if (MmkvManager.getSelectServer().isNullOrEmpty()) {
-                val isPremium = isExtensionAvailable && MmkvManager.decodeSettingsBool(PREF_IS_PREMIUM_MODE, false)
+                val isPremium = isExtensionAvailable && MmkvManager.decodeSettingsBool(AppConfig.PREF_IS_PREMIUM_MODE, false)
                 val premiumIds = getPremiumSubIds()
                 
                 val filteredServers = if (isPremium) {
@@ -544,11 +554,15 @@ class MainActivity : BaseActivity() {
             if (SettingsManager.isVpnMode()) {
                 val intent = VpnService.prepare(this)
                 if (intent == null) {
+                    isConnecting = true
+                    updateUIStates()
                     startV2Ray()
                 } else {
                     requestVpnPermission.launch(intent)
                 }
             } else {
+                isConnecting = true
+                updateUIStates()
                 startV2Ray()
             }
         }
@@ -594,6 +608,8 @@ class MainActivity : BaseActivity() {
 
     fun restartV2Ray() {
         lifecycleScope.launch {
+            isConnecting = true
+            updateUIStates()
             if (mainViewModel.isRunning.value == true) {
                 CoreServiceManager.stopVService(this@MainActivity)
                 var retry = 0
@@ -610,7 +626,7 @@ class MainActivity : BaseActivity() {
 
 
     private fun refreshSelectedServer() {
-        val isPremium = isExtensionAvailable && MmkvManager.decodeSettingsBool(PREF_IS_PREMIUM_MODE, false)
+        val isPremium = isExtensionAvailable && MmkvManager.decodeSettingsBool(AppConfig.PREF_IS_PREMIUM_MODE, false)
         
         lifecycleScope.launch(Dispatchers.Default) {
             val currentGuid = MmkvManager.getSelectServer()
@@ -773,7 +789,7 @@ class MainActivity : BaseActivity() {
     }
 
     private fun updateStandardLayout(filteredRecent: List<Pair<String, ProfileItem>>, currentGuid: String?) {
-        val isPremium = isExtensionAvailable && MmkvManager.decodeSettingsBool(PREF_IS_PREMIUM_MODE, false)
+        val isPremium = isExtensionAvailable && MmkvManager.decodeSettingsBool(AppConfig.PREF_IS_PREMIUM_MODE, false)
         val isAutoMode = MmkvManager.decodeSettingsBool(MmkvManager.KEY_AUTO_MODE, false)
         binding.layoutRecentServers.removeAllViews()
         
@@ -880,7 +896,7 @@ class MainActivity : BaseActivity() {
     }
 
     private fun getPremiumSubIds(): Set<String> {
-        val premiumSubsStr = MmkvManager.decodeSettingsString(PREF_PREMIUM_SUBS_LIST, "")
+        val premiumSubsStr = MmkvManager.decodeSettingsString(AppConfig.PREF_PREMIUM_SUBS_LIST, "")
         return premiumSubsStr?.split(",")?.filter { it.isNotEmpty() }?.toSet() ?: emptySet()
     }
 
@@ -924,23 +940,28 @@ class MainActivity : BaseActivity() {
     private fun runDiagnostic(service: DiagnosticService) {
         if (diagnosticLoading[service.id] == true) return
         lifecycleScope.launch {
-            diagnosticLoading[service.id] = true
-            updateUIStates()
-            updateDiagnosticView(service.id)
+            try {
+                diagnosticLoading[service.id] = true
+                updateUIStates()
 
-            var allSuccess = true
-            for (url in service.urls) {
-                if (!testService(url)) {
-                    allSuccess = false
-                    break
+                var allSuccess = true
+                for (url in service.urls) {
+                    if (!testService(url)) {
+                        allSuccess = false
+                        break
+                    }
+                }
+                diagnosticResults[service.id] = allSuccess
+            } catch (e: Exception) {
+                Log.e("UnknMagic", "Diagnostic failed for ${service.id}", e)
+                diagnosticResults[service.id] = false
+            } finally {
+                diagnosticLoading[service.id] = false
+                updateUIStates()
+                if (checkManualResultsAndSwitch()) {
+                    switchToNextBestServer(delayMs = 2000)
                 }
             }
-
-            diagnosticResults[service.id] = allSuccess
-            diagnosticLoading[service.id] = false
-            updateUIStates()
-            updateDiagnosticView(service.id)
-            checkManualResultsAndSwitch()
         }
     }
 
@@ -1020,18 +1041,21 @@ class MainActivity : BaseActivity() {
         view.imageTintList = ColorStateList.valueOf(color)
     }
 
-    private fun checkManualResultsAndSwitch() {
-        if (diagnosticLoading.values.any { it }) return
+    private fun checkManualResultsAndSwitch(): Boolean {
+        if (diagnosticLoading.values.any { it }) return false
 
+        val services = DiagnosticsManager.getServices(this)
         val results = diagnosticResults.values.filterNotNull()
-        if (results.isNotEmpty() && results.all { !it }) {
-            Log.i("UnknMagic", "Auto Mode: All manual tests failed. Triggering immediate switch.")
-            switchToNextBestServer()
-        } else if (results.any { !it }) {
+        
+        // Переключаем только если протестированы ВСЕ сервисы и ВСЕ они провалены
+        val isBroken = results.size == services.size && results.all { !it }
+        
+        if (results.any { !it }) {
             binding.btnAutoSwitchServer.visibility = View.VISIBLE
         } else {
             binding.btnAutoSwitchServer.visibility = View.GONE
         }
+        return isBroken
     }
 
     private suspend fun performHealthCheck() {
@@ -1042,33 +1066,33 @@ class MainActivity : BaseActivity() {
         withContext(Dispatchers.Main) {
             services.forEach { service ->
                 diagnosticLoading[service.id] = true
-                updateDiagnosticView(service.id)
             }
+            updateUIStates()
         }
 
-        var allServicesSuccess = true
         for (service in services) {
             var serviceSuccess = true
-            for (url in service.urls) {
-                if (!testService(url)) {
-                    serviceSuccess = false
-                    break
+            try {
+                for (url in service.urls) {
+                    if (!testService(url)) {
+                        serviceSuccess = false
+                        break
+                    }
                 }
+            } catch (e: Exception) {
+                serviceSuccess = false
             }
 
             withContext(Dispatchers.Main) {
                 diagnosticResults[service.id] = serviceSuccess
                 diagnosticLoading[service.id] = false
-                updateDiagnosticView(service.id)
-            }
-
-            if (!serviceSuccess) {
-                allServicesSuccess = false
+                updateUIStates()
             }
         }
 
         withContext(Dispatchers.Main) {
-            if (allServicesSuccess) {
+            val isBroken = checkManualResultsAndSwitch()
+            if (!isBroken) {
                 Log.i("UnknMagic", "Auto Mode: Health check PASSED")
                 healthCheckFailCount = 0
             } else {
@@ -1077,18 +1101,32 @@ class MainActivity : BaseActivity() {
                 if (healthCheckFailCount >= 3) {
                     healthCheckFailCount = 0
                     Log.i("UnknMagic", "Auto Mode: Threshold reached. Switching server...")
-                    switchToNextBestServer()
+                    switchToNextBestServer(delayMs = 5000)
                 }
             }
         }
     }
 
-    private fun switchToNextBestServer(forceBest: Boolean = false, forceReconnect: Boolean? = null) {
+    private fun switchToNextBestServer(forceBest: Boolean = false, forceReconnect: Boolean? = null, delayMs: Long = 0) {
         if (isSwitchingServer) return
         isSwitchingServer = true
+        switchingTotalDelay = delayMs
+        switchingStartTime = System.currentTimeMillis()
 
         lifecycleScope.launch(Dispatchers.Default) {
             try {
+                if (delayMs > 0) {
+                    switchingTotalDelay = delayMs
+                    val startTime = System.currentTimeMillis()
+                    while (System.currentTimeMillis() - startTime < delayMs) {
+                        val elapsed = System.currentTimeMillis() - startTime
+                        switchingCountdown = ((delayMs - elapsed + 999) / 1000).toInt()
+                        withContext(Dispatchers.Main) { updateUIStates() }
+                        delay(100)
+                    }
+                    switchingCountdown = 0
+                }
+
                 val allServers = MmkvManager.decodeAllServerList().mapNotNull { guid ->
                     val profile = MmkvManager.decodeServerConfig(guid)
                     if (profile != null) guid to profile else null
@@ -1144,9 +1182,9 @@ class MainActivity : BaseActivity() {
                             
                             val shouldReconnect = forceReconnect ?: (mainViewModel.isRunning.value == true)
                             if (shouldReconnect) {
-                                if (isNewServer) {
-                                    toast(getString(R.string.auto_mode_switching))
-                                }
+                                // Флаг для updateUIStates, чтобы показать "Перезапуск..."
+                                switchingCountdown = -1 
+                                updateUIStates()
                                 
                                 if (mainViewModel.isRunning.value == true) {
                                     CoreServiceManager.stopVService(this@MainActivity)
@@ -1164,7 +1202,7 @@ class MainActivity : BaseActivity() {
                                     delay(200)
                                     retryStart++
                                 }
-                                delay(2000)
+                                delay(1000)
                             }
                         }
                     }
@@ -1173,12 +1211,14 @@ class MainActivity : BaseActivity() {
                 Log.e("UnknMagic", "AutoSwitch error", e)
             } finally {
                 isSwitchingServer = false
+                switchingCountdown = 0
+                withContext(Dispatchers.Main) { updateUIStates() }
             }
         }
     }
 
     private fun updateTop10List() {
-        val isPremium = isExtensionAvailable && MmkvManager.decodeSettingsBool(PREF_IS_PREMIUM_MODE, false)
+        val isPremium = isExtensionAvailable && MmkvManager.decodeSettingsBool(AppConfig.PREF_IS_PREMIUM_MODE, false)
         val isAutoMode = MmkvManager.decodeSettingsBool(MmkvManager.KEY_AUTO_MODE, false)
         if (isPremium) {
             updateUIStates()
@@ -1211,11 +1251,6 @@ class MainActivity : BaseActivity() {
     }
 
     companion object {
-        private const val PREF_IS_PREMIUM_MODE = "is_premium_mode"
-        private const val PREF_PREMIUM_SUB_ID = "premium_sub_id"
-        private const val PREF_PREMIUM_SUBS_LIST = "premium_subs_list"
-        private const val PREF_LAST_UPDATE_CHECK = "last_update_check_time"
-        private const val AUTO_UPDATE_CHECK_DELAY = 5000L
     }
 
     private fun updateUIStates() {
@@ -1228,12 +1263,13 @@ class MainActivity : BaseActivity() {
         val isTestingText = testResult == getString(R.string.connection_test_testing)
         val isStoppingText = testResult == getString(R.string.connection_test_stopping)
 
-        val isHeavyProcess = isBatch || isUpdating
+        val isServiceTransition = isConnecting || isDisconnecting
+        val isHeavyProcess = isBatch || isUpdating || isSwitchingServer || isServiceTransition
         val isAutoMode = MmkvManager.decodeSettingsBool(MmkvManager.KEY_AUTO_MODE, false)
 
         // 1. FAB (Stop/Play/Resume)
         val currentGuid = MmkvManager.getSelectServer()
-        val isPremiumMode = isExtensionAvailable && MmkvManager.decodeSettingsBool(PREF_IS_PREMIUM_MODE, false)
+        val isPremiumMode = isExtensionAvailable && MmkvManager.decodeSettingsBool(AppConfig.PREF_IS_PREMIUM_MODE, false)
         val isServerSelected = if (!currentGuid.isNullOrEmpty()) {
             val profile = MmkvManager.decodeServerConfig(currentGuid)
             profile != null && (getPremiumSubIds().contains(profile.subscriptionId) == isPremiumMode)
@@ -1257,7 +1293,11 @@ class MainActivity : BaseActivity() {
             else -> R.color.color_fab_inactive
         }
 
-        binding.fab.setIconResource(iconRes)
+        if (isSwitchingServer) {
+            binding.fab.icon = null
+        } else {
+            binding.fab.setIconResource(iconRes)
+        }
         binding.fab.backgroundTintList = ColorStateList.valueOf(ContextCompat.getColor(this, fabColor))
         
         if (isPaused) {
@@ -1268,6 +1308,10 @@ class MainActivity : BaseActivity() {
 
         // 2. Test State Label
         when {
+            switchingCountdown > 0 -> binding.tvTestState.text = "${getString(R.string.auto_mode_switching)} (${switchingCountdown}s)"
+            switchingCountdown == -1 -> binding.tvTestState.text = getString(R.string.connection_updating_subscription).replace("…", "").replace("...", "")
+            isConnecting -> binding.tvTestState.text = getString(R.string.connection_starting)
+            isDisconnecting -> binding.tvTestState.text = getString(R.string.connection_stopping)
             isPaused -> binding.tvTestState.text = getString(R.string.connection_paused)
             testResult != null -> binding.tvTestState.text = testResult
             isUpdating -> binding.tvTestState.text = getString(R.string.connection_updating_subscription)
@@ -1318,6 +1362,32 @@ class MainActivity : BaseActivity() {
         if (isBatch) {
             binding.cardRecent.alpha = 0.6f
             binding.rvTopServers.alpha = 0.6f
+        }
+
+        // 5. Switching Progress and FAB animation
+        if (isSwitchingServer || isServiceTransition || isUpdating) {
+            if (binding.pbSwitching.visibility != View.VISIBLE) {
+                binding.pbSwitching.alpha = 0f
+                binding.pbSwitching.visibility = View.VISIBLE
+                binding.pbSwitching.animate().alpha(1f).setDuration(300).start()
+            }
+
+            if (isSwitchingServer && switchingCountdown > 0 && switchingTotalDelay > 0) {
+                val elapsed = System.currentTimeMillis() - switchingStartTime
+                val progress = (elapsed.coerceAtLeast(0L).toFloat() / switchingTotalDelay * 100).toInt()
+                binding.pbSwitching.isIndeterminate = false
+                binding.pbSwitching.setProgress(progress.coerceIn(0, 100), true)
+            } else {
+                binding.pbSwitching.isIndeterminate = true
+            }
+            binding.fab.animate().scaleX(0.85f).scaleY(0.85f).alpha(0.6f).setDuration(300).start()
+        } else {
+            if (binding.pbSwitching.visibility == View.VISIBLE) {
+                binding.pbSwitching.animate().alpha(0f).setDuration(300).withEndAction {
+                    binding.pbSwitching.visibility = View.GONE
+                }.start()
+            }
+            binding.fab.animate().scaleX(1.0f).scaleY(1.0f).alpha(1.0f).setDuration(300).start()
         }
 
         invalidateOptionsMenu()
@@ -1449,7 +1519,7 @@ class MainActivity : BaseActivity() {
 
     override fun onOptionsItemSelected(item: MenuItem) = when (item.itemId) {
         R.id.all_ping -> {
-            val isPremium = isExtensionAvailable && MmkvManager.decodeSettingsBool(PREF_IS_PREMIUM_MODE, false)
+            val isPremium = isExtensionAvailable && MmkvManager.decodeSettingsBool(AppConfig.PREF_IS_PREMIUM_MODE, false)
             if (isPremium) {
                 val servers = if (mainViewModel.subscriptionId.isEmpty()) getPremiumServerGuids() else mainViewModel.serversCache.map { it.guid }
                 if (mainViewModel.subscriptionId.isNotEmpty() || servers.isNotEmpty()) {
@@ -1469,7 +1539,7 @@ class MainActivity : BaseActivity() {
             true
         }
         R.id.sub_update -> {
-            if (isExtensionAvailable && MmkvManager.decodeSettingsBool(PREF_IS_PREMIUM_MODE, false)) {
+            if (isExtensionAvailable && MmkvManager.decodeSettingsBool(AppConfig.PREF_IS_PREMIUM_MODE, false)) {
                 fetchRemoteSubscriptions()
             }
             importConfigViaSub()
@@ -1504,6 +1574,9 @@ class MainActivity : BaseActivity() {
 
     fun importConfigViaSub(triggerPing: Boolean = false, forceSubIds: List<String>? = null): Boolean {
         mainViewModel.stopTest()
+        if (mainViewModel.isRunning.value == true) {
+            isDisconnecting = true
+        }
         CoreServiceManager.stopVService(this)
         isSubscriptionUpdating = true
         isBatchTesting = false
@@ -1518,7 +1591,7 @@ class MainActivity : BaseActivity() {
             val subIds = if (forceSubIds != null) {
                 forceSubIds
             } else {
-                val isPremium = isExtensionAvailable && MmkvManager.decodeSettingsBool(PREF_IS_PREMIUM_MODE, false)
+                val isPremium = isExtensionAvailable && MmkvManager.decodeSettingsBool(AppConfig.PREF_IS_PREMIUM_MODE, false)
                 if (isPremium) {
                     if (mainViewModel.subscriptionId.isNotEmpty()) {
                         listOf(mainViewModel.subscriptionId)
@@ -1550,7 +1623,7 @@ class MainActivity : BaseActivity() {
                     refreshSelectedServer()
                     toast(getString(R.string.title_update_subscription_result,  result.failureCount))
                     if (triggerPing) {
-                        if (MmkvManager.decodeSettingsBool(PREF_IS_PREMIUM_MODE, false)) {
+                        if (MmkvManager.decodeSettingsBool(AppConfig.PREF_IS_PREMIUM_MODE, false)) {
                             if (mainViewModel.subscriptionId.isEmpty()) {
                                 mainViewModel.testAllRealPing(getPremiumServerGuids())
                             } else {
@@ -1583,6 +1656,8 @@ class MainActivity : BaseActivity() {
 
     private val requestVpnPermission = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
         if (it.resultCode == RESULT_OK) {
+            isConnecting = true
+            updateUIStates()
             startV2Ray()
         }
     }

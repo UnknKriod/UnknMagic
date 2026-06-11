@@ -373,6 +373,8 @@
     <string name="connection_paused">Paused</string>
     <string name="connection_runing_task_left">Testing: %s</string>
     <string name="connection_test_stopping">Stopping…</string>
+    <string name="connection_starting">Connecting…</string>
+    <string name="connection_stopping">Disconnecting…</string>
     <string name="action_stop_test">Stop Testing</string>
 
     <string name="import_subscription_success">Subscription imported Successfully</string>

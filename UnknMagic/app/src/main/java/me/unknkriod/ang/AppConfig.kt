@@ -80,6 +80,12 @@ object AppConfig {
     const val PREF_AUTO_SORT_AFTER_TEST = "pref_auto_sort_after_test"
     const val PREF_REAL_PING_CONCURRENCY = "pref_real_ping_concurrency"
 
+    const val PREF_IS_PREMIUM_MODE = "is_premium_mode"
+    const val PREF_PREMIUM_SUBS_LIST = "premium_subs_list"
+    const val PREF_LAST_UPDATE_CHECK = "last_update_check_time"
+    const val PREF_LAST_AUTO_UPDATE_SUB = "last_auto_update_sub"
+    const val AUTO_UPDATE_CHECK_DELAY = 5000L
+
     /** Cache keys. */
     const val CACHE_SUBSCRIPTION_ID = "cache_subscription_id"
 
