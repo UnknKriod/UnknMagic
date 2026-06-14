@@ -14,6 +14,9 @@ import android.view.ViewGroup
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.ImageView
+import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.LayerDrawable
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.core.content.ContextCompat
@@ -70,6 +73,13 @@ class MainActivity : BaseActivity() {
     private var switchingCountdown = 0
     private var switchingTotalDelay = 0L
     private var switchingStartTime = 0L
+
+    private var lastFabActionTime = 0L
+    private val fabCooldownMillis = 2000L
+    private var isShowFabLock = false
+    private var fabLockEndTime = 0L
+    private var isFabClickFeedbackActive = false
+    private var fabFeedbackJob: kotlinx.coroutines.Job? = null
 
     private val diagnosticResults = mutableMapOf<String, Boolean?>()
     private val diagnosticLoading = mutableMapOf<String, Boolean>()
@@ -420,6 +430,7 @@ class MainActivity : BaseActivity() {
             isConnecting = false
             isDisconnecting = false
             
+            lastFabActionTime = System.currentTimeMillis()
             if (!isRunning) {
                 mainViewModel.stopTest()
                 mainViewModel.updateTestResultAction.value = null
@@ -434,6 +445,7 @@ class MainActivity : BaseActivity() {
             updateUIStates()
         }
         mainViewModel.isPaused.observe(this) {
+            lastFabActionTime = System.currentTimeMillis()
             updateUIStates()
         }
         mainViewModel.updateTestResultAction.observe(this) { result ->
@@ -506,6 +518,10 @@ class MainActivity : BaseActivity() {
     }
 
     private fun handleFabAction() {
+        if (System.currentTimeMillis() - lastFabActionTime < fabCooldownMillis || isShowFabLock) {
+            triggerFabBlockedFeedback()
+            return
+        }
         if (mainViewModel.isPaused.value == true) {
             MessageUtil.sendMsg2Service(this, AppConfig.MSG_STATE_RESUME, "")
             return
@@ -565,6 +581,39 @@ class MainActivity : BaseActivity() {
                 updateUIStates()
                 startV2Ray()
             }
+        }
+    }
+
+    private fun triggerFabBlockedFeedback() {
+        val now = System.currentTimeMillis()
+        val extensionMillis = 500L
+        val maxTotalLockMillis = 5000L
+        
+        if (!isShowFabLock) {
+            fabLockEndTime = now + 1000L
+        } else {
+            fabLockEndTime = minOf(fabLockEndTime + extensionMillis, now + maxTotalLockMillis)
+        }
+
+        lifecycleScope.launch {
+            isFabClickFeedbackActive = true
+            updateUIStates()
+            delay(150)
+            isFabClickFeedbackActive = false
+            updateUIStates()
+        }
+
+        fabFeedbackJob?.cancel()
+        fabFeedbackJob = lifecycleScope.launch {
+            isShowFabLock = true
+            updateUIStates()
+            
+            while (System.currentTimeMillis() < fabLockEndTime) {
+                delay(100)
+            }
+            
+            isShowFabLock = false
+            updateUIStates()
         }
     }
 
@@ -1292,17 +1341,57 @@ class MainActivity : BaseActivity() {
             else -> R.color.color_fab_inactive
         }
 
-        if (isSwitchingServer) {
-            binding.fab.icon = null
+        if (isShowFabLock) {
+            val circleColor = 0xFFFF0000.toInt()
+            val lockColor = Color.WHITE
+            
+            val lockSize = (56 * resources.displayMetrics.density).toInt()
+            val circleSize = (84 * resources.displayMetrics.density).toInt()
+            binding.fab.iconSize = circleSize
+
+            val circleDrawable = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(circleColor)
+            }
+            val lockDrawable = ContextCompat.getDrawable(this, R.drawable.ic_lock_24dp)?.mutate()?.apply {
+                setTint(lockColor)
+            }
+            
+            val layerDrawable = LayerDrawable(arrayOf(circleDrawable, lockDrawable))
+            val padding = (circleSize - lockSize) / 2
+            layerDrawable.setLayerInset(1, padding, padding, padding, padding)
+            
+            binding.fab.icon = layerDrawable
+            binding.fab.iconTint = null
+            binding.fab.rippleColor = ColorStateList.valueOf(0)
+
+            if (isFabClickFeedbackActive) {
+                binding.fab.backgroundTintList = ColorStateList.valueOf(Color.WHITE)
+                binding.fab.strokeWidth = (5 * resources.displayMetrics.density).toInt()
+                binding.fab.strokeColor = ColorStateList.valueOf(0xFFFF0000.toInt())
+            } else {
+                binding.fab.backgroundTintList = ColorStateList.valueOf(ContextCompat.getColor(this, fabColor))
+                binding.fab.strokeWidth = (4 * resources.displayMetrics.density).toInt()
+                binding.fab.strokeColor = ColorStateList.valueOf(0xFFFF0000.toInt())
+            }
         } else {
-            binding.fab.setIconResource(iconRes)
-        }
-        binding.fab.backgroundTintList = ColorStateList.valueOf(ContextCompat.getColor(this, fabColor))
-        
-        if (isPaused) {
-            binding.fab.iconTint = ColorStateList.valueOf(ContextCompat.getColor(this, R.color.color_fab_active))
-        } else {
-            binding.fab.iconTint = ColorStateList.valueOf(ContextCompat.getColor(this, R.color.colorWhite))
+            binding.fab.iconSize = (56 * resources.displayMetrics.density).toInt()
+            binding.fab.rippleColor = ColorStateList.valueOf(ContextCompat.getColor(this, R.color.colorWhite).let {
+                androidx.core.graphics.ColorUtils.setAlphaComponent(it, 32)
+            })
+            if (isSwitchingServer) {
+                binding.fab.icon = null
+            } else {
+                binding.fab.setIconResource(iconRes)
+            }
+
+            if (isPaused) {
+                binding.fab.iconTint = ColorStateList.valueOf(ContextCompat.getColor(this, R.color.color_fab_active))
+            } else {
+                binding.fab.iconTint = ColorStateList.valueOf(ContextCompat.getColor(this, R.color.colorWhite))
+            }
+            binding.fab.strokeWidth = 0
+            binding.fab.backgroundTintList = ColorStateList.valueOf(ContextCompat.getColor(this, fabColor))
         }
 
         // 2. Test State Label
