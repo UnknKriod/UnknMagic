@@ -58,6 +58,7 @@ class MainActivity : BaseActivity() {
     private var remoteSubscriptions: List<RemoteSubscription> = emptyList()
     private val expandedSubscriptions = mutableSetOf<String>()
     private var isFetchingRemote = false
+    private var isInternetAvailable = false
     private var isSubscriptionUpdating = false
     private var isBatchTesting = false
     private var isSingleTesting = false
@@ -205,6 +206,7 @@ class MainActivity : BaseActivity() {
             }
 
             withContext(Dispatchers.Main) {
+                isInternetAvailable = isConnected
                 val targetTab = if (isConnected && isExtensionAvailable && getPremiumSubIds().isNotEmpty()) 1 else 0
                 if (binding.tabMode.selectedTabPosition != targetTab) {
                     binding.tabMode.post {
@@ -323,7 +325,7 @@ class MainActivity : BaseActivity() {
     }
 
     private fun fetchRemoteSubscriptions() {
-        if (isFetchingRemote || !isExtensionAvailable) return
+        if (isFetchingRemote || !isExtensionAvailable || !isInternetAvailable) return
         isFetchingRemote = true
         updateUIStates()
         lifecycleScope.launch(Dispatchers.Default) {
