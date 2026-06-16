@@ -28,6 +28,7 @@ import kotlin.math.min
 
 object NotificationManager {
     private const val NOTIFICATION_ID = 1
+    private const val EVENT_NOTIFICATION_ID = 2
     private const val NOTIFICATION_PENDING_INTENT_CONTENT = 0
     private const val NOTIFICATION_PENDING_INTENT_STOP_V2RAY = 1
     private const val NOTIFICATION_PENDING_INTENT_RESTART_V2RAY = 2
@@ -223,21 +224,79 @@ object NotificationManager {
 
     @RequiresApi(Build.VERSION_CODES.O)
     private fun createNotificationChannel(service: Service): String {
+        val notificationManager = service.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+
+        // Foreground Service Channel
         val channelId = AppConfig.RAY_NG_CHANNEL_ID
         val channelName = AppConfig.RAY_NG_CHANNEL_NAME
         val chan = NotificationChannel(
             channelId,
             channelName, 
-            NotificationManager.IMPORTANCE_LOW // Low importance = no sound, no peek, but visible
+            NotificationManager.IMPORTANCE_LOW
         ).apply {
             lightColor = Color.DKGRAY
             lockscreenVisibility = Notification.VISIBILITY_PRIVATE
             setShowBadge(false)
         }
-        
-        val notificationManager = service.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         notificationManager.createNotificationChannel(chan)
+
+        // Event Channel (High Importance for heads-up)
+        val eventChan = NotificationChannel(
+            AppConfig.RAY_NG_EVENT_CHANNEL_ID,
+            AppConfig.RAY_NG_EVENT_CHANNEL_NAME,
+            NotificationManager.IMPORTANCE_HIGH
+        ).apply {
+            lightColor = Color.BLUE
+            lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+            setShowBadge(true)
+            enableVibration(true)
+        }
+        notificationManager.createNotificationChannel(eventChan)
+
         return channelId
+    }
+
+    /**
+     * Shows a high-priority event notification (banner).
+     */
+    fun showEventNotification(context: Context, title: String, content: String) {
+        val channelId = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            // Ensure channel exists
+            val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            val eventChan = NotificationChannel(
+                AppConfig.RAY_NG_EVENT_CHANNEL_ID,
+                AppConfig.RAY_NG_EVENT_CHANNEL_NAME,
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                lightColor = Color.BLUE
+                lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+                setShowBadge(true)
+                enableVibration(true)
+            }
+            notificationManager.createNotificationChannel(eventChan)
+            AppConfig.RAY_NG_EVENT_CHANNEL_ID
+        } else {
+            ""
+        }
+
+        val flags = PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        val startMainIntent = Intent(context, MainActivity::class.java).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        }
+        val contentIntent = PendingIntent.getActivity(context, 100, startMainIntent, flags)
+
+        val builder = NotificationCompat.Builder(context, channelId)
+            .setSmallIcon(R.drawable.ic_stat_notification)
+            .setContentTitle(title)
+            .setContentText(content)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setCategory(NotificationCompat.CATEGORY_EVENT)
+            .setAutoCancel(true)
+            .setContentIntent(contentIntent)
+            .setDefaults(Notification.DEFAULT_ALL)
+
+        val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        notificationManager.notify(EVENT_NOTIFICATION_ID, builder.build())
     }
 
     /**

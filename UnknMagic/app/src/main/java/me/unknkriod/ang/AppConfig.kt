@@ -183,6 +183,8 @@ object AppConfig {
     /** Notification channel IDs and names. */
     const val RAY_NG_CHANNEL_ID = "RAY_NG_M_CH_ID"
     const val RAY_NG_CHANNEL_NAME = "Unknown Magic Background Service"
+    const val RAY_NG_EVENT_CHANNEL_ID = "RAY_NG_E_CH_ID"
+    const val RAY_NG_EVENT_CHANNEL_NAME = "Unknown Magic Event Notifications"
 
     /** Protocols Scheme **/
     const val VMESS = "vmess://"

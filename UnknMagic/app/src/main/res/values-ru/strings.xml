@@ -14,6 +14,7 @@
     <string name="notification_action_stop_v2ray">Остановить</string>
     <string name="notification_action_pause_v2ray">Пауза</string>
     <string name="notification_action_resume_v2ray">Возобновить</string>
+    <string name="notification_auto_switch_title">Сервер автоматически переключен</string>
     <string name="toast_permission_denied">Разрешение не получено</string>
     <string name="toast_permission_denied_notification">Разрешение на отображение уведомлений не получено</string>
     <string name="notification_action_more">Ещё…</string>

@@ -42,6 +42,7 @@ import me.unknkriod.ang.dto.ProfileItem
 import me.unknkriod.ang.util.LicenseProvider
 import me.unknkriod.ang.util.MessageUtil
 import me.unknkriod.ang.util.RemoteSubscription
+import me.unknkriod.ang.handler.NotificationManager
 
 import me.unknkriod.ang.handler.DiagnosticsManager
 import me.unknkriod.ang.dto.DiagnosticService
@@ -1157,13 +1158,13 @@ class MainActivity : BaseActivity() {
                 if (healthCheckFailCount >= 3) {
                     healthCheckFailCount = 0
                     Log.i("UnknMagic", "Auto Mode: Threshold reached. Switching server...")
-                    switchToNextBestServer(delayMs = 5000)
+                    switchToNextBestServer(delayMs = 5000, triggerBySystem = true)
                 }
             }
         }
     }
 
-    private fun switchToNextBestServer(targetGuid: String? = null, forceBest: Boolean = false, forceReconnect: Boolean? = null, delayMs: Long = 0) {
+    private fun switchToNextBestServer(targetGuid: String? = null, forceBest: Boolean = false, forceReconnect: Boolean? = null, delayMs: Long = 0, triggerBySystem: Boolean = false) {
         if (isSwitchingServer) return
         isSwitchingServer = true
         switchingTotalDelay = delayMs
@@ -1236,6 +1237,11 @@ class MainActivity : BaseActivity() {
                         withContext(Dispatchers.Main) {
                             if (isNewServer) {
                                 MmkvManager.setSelectServer(nextServerGuid!!)
+
+                                if (triggerBySystem) {
+                                    val remarks = MmkvManager.decodeServerConfig(nextServerGuid!!)?.remarks ?: "Unknown"
+                                    NotificationManager.showEventNotification(this@MainActivity, getString(R.string.notification_auto_switch_title), remarks)
+                                }
 
                                 diagnosticResults.clear()
                                 diagnosticLoading.clear()
