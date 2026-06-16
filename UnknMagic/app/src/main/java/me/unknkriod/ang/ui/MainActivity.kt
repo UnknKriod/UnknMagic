@@ -242,14 +242,16 @@ class MainActivity : BaseActivity() {
 
                 try {
                     val result = UpdateCheckerManager.checkForUpdate()
-                    if (result.hasUpdate) {
-                        withContext(Dispatchers.Main) {
+                    withContext(Dispatchers.Main) {
+                        if (result.hasUpdate) {
                             if (!isFinishing && !isDestroyed && !isLicenseAuthInProgress) {
                                 showUpdateDialog(result)
+                                MmkvManager.encodeSettings(AppConfig.PREF_LAST_UPDATE_CHECK, now)
                             }
+                        } else {
+                            MmkvManager.encodeSettings(AppConfig.PREF_LAST_UPDATE_CHECK, now)
                         }
                     }
-                    MmkvManager.encodeSettings(AppConfig.PREF_LAST_UPDATE_CHECK, now)
                 } catch (e: Exception) {
                     Log.e("Unknown Magic", "Auto update check failed", e)
                 }

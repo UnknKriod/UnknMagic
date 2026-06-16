@@ -34,16 +34,29 @@ object UpdateCheckerManager {
 
         LogUtil.i(AppConfig.TAG, "Fetched ${allReleases.size} releases")
 
-        // Определяем тег для поиска в названии релиза
-        val flavorTag = if (BuildConfig.FLAVOR == "free") "-free" else "-premium"
+        val flavorTag = if (BuildConfig.FLAVOR == "free") "free" else "premium"
 
         // Находим последний подходящий релиз
         val latestRelease = allReleases.firstOrNull { release ->
             val isGitHub = url.contains("github.com")
-            val matchesFlavor = !isGitHub || 
-                               release.tagName.contains(flavorTag, ignoreCase = true) ||
-                               release.body.contains(flavorTag, ignoreCase = true)
-            
+            val matchesFlavor = if (isGitHub) {
+                if (BuildConfig.FLAVOR == "free") {
+                    // Для free версии на GitHub: либо есть явная пометка -free,
+                    // либо нет пометки -premium (считаем по умолчанию free)
+                    release.tagName.contains("-free", ignoreCase = true) ||
+                    release.body.contains("-free", ignoreCase = true) ||
+                    (!release.tagName.contains("-premium", ignoreCase = true) &&
+                     !release.body.contains("-premium", ignoreCase = true))
+                } else {
+                    // Для premium версии на GitHub: обязательно должна быть пометка -premium
+                    release.tagName.contains("-premium", ignoreCase = true) ||
+                    release.body.contains("-premium", ignoreCase = true)
+                }
+            } else {
+                // Если не GitHub, считаем что URL уже специфичен для флавора
+                true
+            }
+
             if (includePreRelease) {
                 matchesFlavor
             } else {
