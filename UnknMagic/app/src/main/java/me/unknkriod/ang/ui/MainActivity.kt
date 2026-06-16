@@ -119,7 +119,7 @@ class MainActivity : BaseActivity() {
         binding.btnRunAllTests.setOnClickListener { runAllDiagnostics() }
 
         binding.btnAutoSwitchServer.setOnClickListener {
-            switchToNextBestServer()
+            switchToNextBestServer(delayMs = 2000)
         }
 
         binding.btnPingAllEmpty.setOnClickListener {
@@ -911,12 +911,17 @@ class MainActivity : BaseActivity() {
             val currentSelect = MmkvManager.getSelectServer()
             if (currentSelect == guid) {
                 MmkvManager.setSelectServer("")
+                refreshSelectedServer()
+                if (mainViewModel.isRunning.value == true) {
+                    CoreServiceManager.stopVService(this@MainActivity)
+                }
             } else {
-                MmkvManager.setSelectServer(guid)
-            }
-            refreshSelectedServer()
-            if (mainViewModel.isRunning.value == true) {
-                restartV2Ray()
+                if (mainViewModel.isRunning.value == true) {
+                    switchToNextBestServer(targetGuid = guid, delayMs = 2000)
+                } else {
+                    MmkvManager.setSelectServer(guid)
+                    refreshSelectedServer()
+                }
             }
         }
         binding.layoutRecentServers.addView(itemView)
@@ -1158,11 +1163,12 @@ class MainActivity : BaseActivity() {
         }
     }
 
-    private fun switchToNextBestServer(forceBest: Boolean = false, forceReconnect: Boolean? = null, delayMs: Long = 0) {
+    private fun switchToNextBestServer(targetGuid: String? = null, forceBest: Boolean = false, forceReconnect: Boolean? = null, delayMs: Long = 0) {
         if (isSwitchingServer) return
         isSwitchingServer = true
         switchingTotalDelay = delayMs
         switchingStartTime = System.currentTimeMillis()
+        binding.pbSwitching.setProgress(0, false)
 
         lifecycleScope.launch(Dispatchers.Default) {
             try {
@@ -1178,49 +1184,59 @@ class MainActivity : BaseActivity() {
                     switchingCountdown = 0
                 }
 
-                val allServers = MmkvManager.decodeAllServerList().mapNotNull { guid ->
-                    val profile = MmkvManager.decodeServerConfig(guid)
-                    if (profile != null) guid to profile else null
-                }
+                var nextServerGuid: String? = targetGuid
 
-                val premiumIds = getPremiumSubIds()
-                val standardServers = allServers.filter { !premiumIds.contains(it.second.subscriptionId) }
-                
-                if (standardServers.isEmpty()) return@launch
-
-                val currentGuid = MmkvManager.getSelectServer()
-                
-                val sortedServers = standardServers.map { 
-                    it to (MmkvManager.decodeServerAffiliationInfo(it.first)?.testDelayMillis ?: 0L)
-                }.sortedBy {
-                    val delay = it.second
-                    if (delay <= 0) Long.MAX_VALUE else delay
-                }.map { it.first }
-
-                val nextServer = if (forceBest) {
-                    val candidate = sortedServers.firstOrNull()
-                    val candidateDelay = candidate?.let { MmkvManager.decodeServerAffiliationInfo(it.first)?.testDelayMillis } ?: 0L
-                    if (candidateDelay > 0) candidate else null
-                } else {
-                    val currentIdx = sortedServers.indexOfFirst { it.first == currentGuid }
-                    if (currentIdx != -1) {
-                        val nextIdx = (currentIdx + 1) % sortedServers.size
-                        val candidate = sortedServers[nextIdx]
-                        val candidateDelay = MmkvManager.decodeServerAffiliationInfo(candidate.first)?.testDelayMillis ?: 0L
-                        
-                        if (candidateDelay > 0) candidate else sortedServers.firstOrNull()
-                    } else {
-                        sortedServers.firstOrNull()
+                if (nextServerGuid == null) {
+                    val allServers = MmkvManager.decodeAllServerList().mapNotNull { guid ->
+                        val profile = MmkvManager.decodeServerConfig(guid)
+                        if (profile != null) guid to profile else null
                     }
+
+                    val premiumIds = getPremiumSubIds()
+                    val standardServers = allServers.filter { !premiumIds.contains(it.second.subscriptionId) }
+
+                    if (standardServers.isEmpty()) {
+                        isSwitchingServer = false
+                        withContext(Dispatchers.Main) { updateUIStates() }
+                        return@launch
+                    }
+
+                    val currentGuid = MmkvManager.getSelectServer()
+
+                    val sortedServers = standardServers.map {
+                        it to (MmkvManager.decodeServerAffiliationInfo(it.first)?.testDelayMillis ?: 0L)
+                    }.sortedBy {
+                        val delay = it.second
+                        if (delay <= 0) Long.MAX_VALUE else delay
+                    }.map { it.first }
+
+                    val nextServer = if (forceBest) {
+                        val candidate = sortedServers.firstOrNull()
+                        val candidateDelay = candidate?.let { MmkvManager.decodeServerAffiliationInfo(it.first)?.testDelayMillis } ?: 0L
+                        if (candidateDelay > 0) candidate else null
+                    } else {
+                        val currentIdx = sortedServers.indexOfFirst { it.first == currentGuid }
+                        if (currentIdx != -1) {
+                            val nextIdx = (currentIdx + 1) % sortedServers.size
+                            val candidate = sortedServers[nextIdx]
+                            val candidateDelay = MmkvManager.decodeServerAffiliationInfo(candidate.first)?.testDelayMillis ?: 0L
+
+                            if (candidateDelay > 0) candidate else sortedServers.firstOrNull()
+                        } else {
+                            sortedServers.firstOrNull()
+                        }
+                    }
+                    nextServerGuid = nextServer?.first
                 }
 
-                if (nextServer != null) {
-                    val isNewServer = nextServer.first != currentGuid
+                if (nextServerGuid != null) {
+                    val currentGuid = MmkvManager.getSelectServer()
+                    val isNewServer = nextServerGuid != currentGuid
                     if (isNewServer || forceBest) {
                         withContext(Dispatchers.Main) {
                             if (isNewServer) {
-                                MmkvManager.setSelectServer(nextServer.first)
-                                
+                                MmkvManager.setSelectServer(nextServerGuid!!)
+
                                 diagnosticResults.clear()
                                 diagnosticLoading.clear()
                                 DiagnosticsManager.getServices(this@MainActivity).forEach {
@@ -1230,13 +1246,13 @@ class MainActivity : BaseActivity() {
 
                                 refreshSelectedServer()
                             }
-                            
+
                             val shouldReconnect = forceReconnect ?: (mainViewModel.isRunning.value == true)
                             if (shouldReconnect) {
                                 // Флаг для updateUIStates, чтобы показать "Перезапуск..."
-                                switchingCountdown = -1 
+                                switchingCountdown = -1
                                 updateUIStates()
-                                
+
                                 if (mainViewModel.isRunning.value == true) {
                                     CoreServiceManager.stopVService(this@MainActivity)
                                     var retry = 0
@@ -1247,7 +1263,7 @@ class MainActivity : BaseActivity() {
                                 }
                                 delay(500)
                                 startV2Ray()
-                                
+
                                 var retryStart = 0
                                 while (mainViewModel.isRunning.value != true && retryStart < 30) {
                                     delay(200)
@@ -1400,6 +1416,7 @@ class MainActivity : BaseActivity() {
         when {
             switchingCountdown > 0 -> binding.tvTestState.text = "${getString(R.string.auto_mode_switching)} (${switchingCountdown}s)"
             switchingCountdown == -1 -> binding.tvTestState.text = getString(R.string.connection_updating_subscription).replace("…", "").replace("...", "")
+            isSwitchingServer -> binding.tvTestState.text = getString(R.string.auto_mode_switching).replace("…", "").replace("...", "")
             isConnecting -> binding.tvTestState.text = getString(R.string.connection_starting)
             isDisconnecting -> binding.tvTestState.text = getString(R.string.connection_stopping)
             isPaused -> binding.tvTestState.text = getString(R.string.connection_paused)
@@ -1409,7 +1426,7 @@ class MainActivity : BaseActivity() {
             else -> binding.tvTestState.text = getString(if (isRunning) R.string.connection_connected else R.string.connection_not_connected)
         }
 
-        val isAnyTesting = isBatch || isSingleTesting || isTestingText || isStoppingText
+        val isAnyTesting = isBatch || isSingleTesting || isTestingText || isStoppingText || isSwitchingServer
         
         val canStart = (isRunning || isServerSelected) && !isAnyTesting && !isUpdating
         val canStopBatch = isBatch && !isStoppingText
@@ -1460,6 +1477,7 @@ class MainActivity : BaseActivity() {
             if (binding.pbSwitching.visibility != View.VISIBLE) {
                 binding.pbSwitching.alpha = 0f
                 binding.pbSwitching.visibility = View.VISIBLE
+                binding.pbSwitching.setProgress(0, false)
                 binding.pbSwitching.animate().alpha(1f).setDuration(300).start()
             }
 
@@ -1475,6 +1493,7 @@ class MainActivity : BaseActivity() {
             if (binding.pbSwitching.visibility == View.VISIBLE) {
                 binding.pbSwitching.animate().alpha(0f).setDuration(300).withEndAction {
                     binding.pbSwitching.visibility = View.GONE
+                    binding.pbSwitching.setProgress(0, false)
                 }.start()
             }
         }
@@ -1558,12 +1577,17 @@ class MainActivity : BaseActivity() {
                 val currentSelect = MmkvManager.getSelectServer()
                 if (currentSelect == item.guid) {
                     MmkvManager.setSelectServer("")
+                    refreshSelectedServer()
+                    if (mainViewModel.isRunning.value == true) {
+                        CoreServiceManager.stopVService(this@MainActivity)
+                    }
                 } else {
-                    MmkvManager.setSelectServer(item.guid)
-                }
-                refreshSelectedServer()
-                if (mainViewModel.isRunning.value == true) {
-                    restartV2Ray()
+                    if (mainViewModel.isRunning.value == true) {
+                        switchToNextBestServer(targetGuid = item.guid, delayMs = 2000)
+                    } else {
+                        MmkvManager.setSelectServer(item.guid)
+                        refreshSelectedServer()
+                    }
                 }
             }
         }

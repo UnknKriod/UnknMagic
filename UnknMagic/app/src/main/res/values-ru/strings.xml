@@ -414,7 +414,7 @@
     <string name="auto_mode_title">Автоматический режим</string>
     <string name="auto_mode_summary">Автоматически переключать серверы при потере соединения</string>
     <string name="auto_mode_checking">Автоматическая проверка связи…</string>
-    <string name="auto_mode_switching">Переключение на лучший сервер…</string>
+    <string name="auto_mode_switching">Переключение на другой сервер…</string>
     <string name="auto_mode_connected">Авторежим активен, нажмите для проверки</string>
 
     <string name="diagnostics_title">Диагностика системы</string>

@@ -418,7 +418,7 @@
     <string name="auto_mode_title">Automatic Mode</string>
     <string name="auto_mode_summary">Automatically switch servers when connection is lost</string>
     <string name="auto_mode_checking">Automatic health check…</string>
-    <string name="auto_mode_switching">Switching to better server…</string>
+    <string name="auto_mode_switching">Switching to another server…</string>
     <string name="auto_mode_connected">Auto-mode active</string>
 
     <string name="diagnostics_title">System Diagnostics</string>
