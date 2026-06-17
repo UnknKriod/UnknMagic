@@ -227,7 +227,6 @@ class MainActivity : BaseActivity() {
     private fun autoCheckForUpdates() {
         val lastCheck = MmkvManager.decodeSettingsLong(AppConfig.PREF_LAST_UPDATE_CHECK, 0L)
         val now = System.currentTimeMillis()
-
         if (now - lastCheck >= TimeUnit.DAYS.toMillis(1)) {
             lifecycleScope.launch(Dispatchers.IO) {
                 delay(2000)
@@ -257,6 +256,7 @@ class MainActivity : BaseActivity() {
                 }
             }
         }
+
     }
 
     private fun setupPluginUI() {
@@ -963,7 +963,7 @@ class MainActivity : BaseActivity() {
         autoModeJob?.cancel()
         autoModeJob = lifecycleScope.launch(Dispatchers.Default) {
             while (true) {
-                delay(60_000L) // Once a minute
+                delay(20_000L) // Раз в 20 секунд, получается 3 проверки в минуту
                 
                 val isRunning = mainViewModel.isRunning.value == true
                 val isPaused = mainViewModel.isPaused.value == true
