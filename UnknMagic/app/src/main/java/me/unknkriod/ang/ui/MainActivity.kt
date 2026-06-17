@@ -800,7 +800,7 @@ class MainActivity : BaseActivity() {
             viewExpand.visibility = if (isSingleSub) View.GONE else View.VISIBLE
 
             viewSelect.setOnClickListener {
-                if (isBatchTesting || isPostUpdatePingInProgress) return@setOnClickListener
+                if (isBatchTesting || isPostUpdatePingInProgress || isSwitchingServer) return@setOnClickListener
                 if (subId.isEmpty()) return@setOnClickListener
                 mainViewModel.subscriptionIdChanged(if (mainViewModel.subscriptionId == subId) "" else subId)
                 if (subId.isNotEmpty()) expandedSubscriptions.add(url)
@@ -908,7 +908,7 @@ class MainActivity : BaseActivity() {
         layoutContent.setPadding(p, p, p, p)
 
         itemView.setOnClickListener {
-            if (isBatchTesting || isPostUpdatePingInProgress) return@setOnClickListener
+            if (isBatchTesting || isPostUpdatePingInProgress || isSwitchingServer) return@setOnClickListener
             if (MmkvManager.decodeSettingsBool(MmkvManager.KEY_AUTO_MODE, false)) return@setOnClickListener
             selectionFromRecent = fromRecent
             val currentSelect = MmkvManager.getSelectServer()
@@ -1057,8 +1057,10 @@ class MainActivity : BaseActivity() {
         val isBatch = isBatchTesting || isPostUpdatePingInProgress
         val isUpdating = isFetchingRemote || isSubscriptionUpdating
         val isTestingManual = diagnosticLoading.values.any { it }
+        val isServiceTransition = isConnecting || isDisconnecting
+        val isHeavyProcess = isBatch || isUpdating || isSwitchingServer || isServiceTransition
 
-        btnTest.isEnabled = isRunning && !isPaused && !isBatch && !isUpdating && !isTestingManual
+        btnTest.isEnabled = isRunning && !isPaused && !isHeavyProcess && !isTestingManual
     }
 
     private fun stopAutoModeTimer() {
@@ -1451,7 +1453,7 @@ class MainActivity : BaseActivity() {
         val isTestingManual = diagnosticLoading.values.any { it }
         val canRunDiagnostics = isRunning && !isPaused && !isHeavyProcess && !isTestingManual
         binding.btnRunAllTests.isEnabled = canRunDiagnostics
-        binding.cardAutoDashboard.alpha = if (isRunning && !isPaused) 1.0f else 0.6f
+        binding.cardAutoDashboard.alpha = if (isRunning && !isPaused && !isSwitchingServer) 1.0f else 0.6f
 
         // Update all diagnostic views to reflect enabled/disabled state
         diagnosticViews.keys.forEach { updateDiagnosticView(it) }
@@ -1474,7 +1476,7 @@ class MainActivity : BaseActivity() {
         binding.btnPingAllEmpty.isEnabled = pingAllEnabled
         binding.btnPingAllEmpty.alpha = if (pingAllEnabled) 1.0f else 0.6f
 
-        if (isBatch) {
+        if (isBatch || isSwitchingServer) {
             binding.cardRecent.alpha = 0.6f
             binding.rvTopServers.alpha = 0.6f
         }
@@ -1579,7 +1581,7 @@ class MainActivity : BaseActivity() {
             layoutContent.setPadding(p, p, p, p)
 
             holder.itemView.setOnClickListener {
-                if (isBatchTesting || isPostUpdatePingInProgress) return@setOnClickListener
+                if (isBatchTesting || isPostUpdatePingInProgress || isSwitchingServer) return@setOnClickListener
                 if (MmkvManager.decodeSettingsBool(MmkvManager.KEY_AUTO_MODE, false)) return@setOnClickListener
                 selectionFromRecent = fromRecent
                 val currentSelect = MmkvManager.getSelectServer()
